@@ -29,7 +29,8 @@
     "active": false,
     "targets": [],
     "icon": [
-      "icons/anm.ico"
+      "icons/atray.ico",
+      "icons/icon.png"
     ]
   }
 }

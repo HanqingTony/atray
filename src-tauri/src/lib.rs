@@ -388,7 +388,7 @@ pub fn run() {
             let settings_i = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &settings_i, &quit_i])?;
-            let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/anm.ico"))
+            let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/atray.ico"))
                 .expect("图标解析失败");
             let _tray = TrayIconBuilder::new()
                 .icon(icon)
