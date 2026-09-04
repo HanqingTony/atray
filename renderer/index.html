@@ -80,6 +80,19 @@
   }
   #plugin-views { position: fixed; inset: 0; display: none; z-index: 50; }
   #plugin-views iframe { width: 100%; height: 100%; border: none; background: #161a22; }
+  /* 右上角小退出按钮 */
+  #quit-btn {
+    position: fixed; top: 10px; right: 10px;
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(30, 33, 40, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 5px;
+    color: #aeb6c2; font-size: 12px; line-height: 1;
+    cursor: pointer; font-family: inherit;
+    z-index: 200;
+  }
+  #quit-btn:hover { border-color: #ff7878; color: #ff7878; background: rgba(60, 30, 34, 0.8); }
   /* 底部工具栏：贴左下角方框按钮 */
   #bottom-bar {
     position: fixed; left: 0; bottom: 0;
@@ -174,6 +187,7 @@
     <button class="add-webui-btn" id="add-webui-btn">＋ 添加web应用</button>
   </div>
   <div id="plugin-views"></div>
+  <button id="quit-btn" title="退出 atray">✕</button>
   <div id="bottom-bar">
     <button class="b-btn" id="settings-btn" title="设置（快捷键 / web 应用）">⚙ 设置</button>
     <button class="b-btn" id="main-panel-btn" data-plugin="__main__" title="主面板">主面板</button>
@@ -224,6 +238,7 @@ const atrayApi = (() => {
     getConfig: () => core.invoke('atray_get_config'),
     setHotkey: (keys) => core.invoke('atray_set_hotkey', { keys }),
     hide: () => core.invoke('atray_hide'),
+    quit: () => core.invoke('atray_quit'),
     onEvent: (cb) => { evt.listen('atray-event', (e) => cb(e.payload)); },
     onMenu: (cb) => { evt.listen('atray-menu', (e) => cb(e.payload)); },
     onPluginActivate: (cb) => { evt.listen('atray-plugin-activate', (e) => cb(e.payload)); },
@@ -525,7 +540,9 @@ document.getElementById('s-ok').onclick = closeSettings;
 document.getElementById('settings-btn').onclick = () => { openSettings(); };
 document.getElementById('main-panel-btn').onclick = () => activatePlugin(null);
 document.getElementById('add-webui-btn').onclick = () => openSettings('apps');
+document.getElementById('quit-btn').onclick = () => atrayApi.quit();
 document.getElementById('add-webui-btn').onclick = () => openSettings('apps');
+document.getElementById('quit-btn').onclick = () => atrayApi.quit();
 
 // 启动
 window.addEventListener('DOMContentLoaded', async () => {

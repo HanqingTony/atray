@@ -179,6 +179,13 @@ fn atray_set_hotkey(app: tauri::AppHandle, state: State<AppState>, keys: String)
     }
 }
 
+/// 退出应用（右上角小按钮用，与托盘「退出」一致）。
+#[tauri::command]
+fn atray_quit(app: tauri::AppHandle) -> IpcResp {
+    app.exit(0);
+    ok(serde_json::json!({ "ok": true }))
+}
+
 /// 隐藏覆盖层（前端点击空白取消激活用）。
 #[tauri::command]
 fn atray_hide(app: tauri::AppHandle) -> IpcResp {
@@ -323,7 +330,8 @@ pub fn run() {
             atray_set_config,
             atray_get_config,
             atray_set_hotkey,
-            atray_hide
+            atray_hide,
+            atray_quit
         ])
         .setup(|app| {
             // 外部前端：navigate 到自定义协议页面（平台 URL 形态不同）
