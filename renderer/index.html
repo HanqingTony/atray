@@ -93,12 +93,12 @@
     z-index: 200;
   }
   #quit-btn:hover { border-color: #ff7878; color: #ff7878; background: rgba(60, 30, 34, 0.8); }
-  /* 贴角：外角（贴屏幕角的一侧）用直角，圆角只留在内侧——
-     否则鼠标滑到屏幕角尖会落在圆角空白区导致 hover 丢失 */
-  #quit-btn.tl { top: 0; left: 0; border-top-left-radius: 0; }
-  #quit-btn.tr { top: 0; right: 0; border-top-right-radius: 0; }
-  #quit-btn.bl { bottom: 0; left: 0; border-bottom-left-radius: 0; }
-  #quit-btn.br { bottom: 0; right: 0; border-bottom-right-radius: 0; }
+  /* 贴角：仅朝向屏幕中心的角为圆角，其余（贴屏幕边/角的）全直角——
+     保证鼠标滑到边缘/角尖不丢 hover，同时保留向内容侧的柔和 */
+  #quit-btn.tl { top: 0; left: 0; border-radius: 0 0 6px 0; }   /* 中心侧=右下 */
+  #quit-btn.tr { top: 0; right: 0; border-radius: 0 0 0 6px; }  /* 中心侧=左下 */
+  #quit-btn.bl { bottom: 0; left: 0; border-radius: 0 6px 0 0; }/* 中心侧=右上 */
+  #quit-btn.br { bottom: 0; right: 0; border-radius: 6px 0 0 0; }/* 中心侧=左上 */
   /* 底部工具栏（菜单栏）：位置可配置（左下/右下/底部居中） */
   #bottom-bar {
     position: fixed;
