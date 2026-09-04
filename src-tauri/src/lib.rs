@@ -77,7 +77,8 @@ struct AppState {
     plugin_shortcuts: Mutex<Vec<(String, tauri_plugin_global_shortcut::Shortcut)>>,
 }
 
-const DEFAULT_HOTKEY: &str = "Alt+Shift+Z";
+// 注意：与 anm（Alt+Shift+Z）可同机并存，故用不同默认值
+const DEFAULT_HOTKEY: &str = "Alt+Shift+A";
 
 impl Default for AppState {
     fn default() -> Self {
@@ -359,21 +360,26 @@ pub fn run() {
             let sc = tauri_plugin_global_shortcut::Shortcut::from_str(&hk).unwrap_or_else(|_| {
                 tauri_plugin_global_shortcut::Shortcut::from_str(DEFAULT_HOTKEY).unwrap()
             });
-            app.global_shortcut()
-                .on_shortcut(sc.clone(), |app, _sc, event| {
-                    use tauri_plugin_global_shortcut::ShortcutState;
-                    if event.state == ShortcutState::Pressed {
-                        if let Some(win) = app.get_webview_window("main") {
-                            if win.is_visible().unwrap_or(false) {
-                                hide_main(&win);
-                            } else {
-                                show_main(&win);
-                            }
+            match app.global_shortcut().on_shortcut(sc.clone(), |app, _sc, event| {
+                use tauri_plugin_global_shortcut::ShortcutState;
+                if event.state == ShortcutState::Pressed {
+                    if let Some(win) = app.get_webview_window("main") {
+                        if win.is_visible().unwrap_or(false) {
+                            hide_main(&win);
+                        } else {
+                            show_main(&win);
                         }
                     }
-                })
-                .expect("注册热键失败");
-            *app.state::<AppState>().hotkey_shortcut.lock().unwrap() = Some(sc);
+                }
+            }) {
+                Ok(()) => {
+                    *app.state::<AppState>().hotkey_shortcut.lock().unwrap() = Some(sc);
+                }
+                Err(e) => {
+                    // 热键被占用（如 anm 同机并存）：降级运行，托盘仍可呼出
+                    eprintln!("全局热键注册失败（可能被占用），托盘仍可用: {e}");
+                }
+            }
 
             // 系统托盘：显示 / 设置 / 退出
             use tauri::menu::{Menu, MenuItem};
