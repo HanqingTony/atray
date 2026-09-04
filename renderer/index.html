@@ -25,13 +25,30 @@
   #empty-hint {
     position: fixed; inset: 0;
     display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 10px; color: var(--text-dim); font-size: 15px;
+    align-items: center;
+    padding-top: 16vh;
+    gap: 0;
+    color: var(--text-dim); font-size: 15px;
     z-index: 1; pointer-events: none;
   }
-  #empty-hint .big { font-size: 20px; color: var(--accent); }
+  /* atray 艺术大标题：细体 + 渐变文字 + 大字号占上半区 + 半透明 */
+  #empty-hint .big {
+    font-size: clamp(90px, 30vh, 320px);
+    line-height: 1;
+    font-weight: 200;
+    letter-spacing: .14em;
+    text-indent: .14em;
+    color: transparent;
+    background: linear-gradient(180deg, rgba(95,190,255,.85) 0%, rgba(95,190,255,.25) 55%, rgba(95,190,255,.06) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    opacity: .55;
+    text-transform: uppercase;
+    user-select: none;
+  }
   .add-webui-btn {
     pointer-events: auto;
+    margin-top: 7vh;
     padding: 10px 28px;
     background: var(--input-bg);
     border: 1px solid var(--accent); border-radius: 8px;
@@ -42,6 +59,7 @@
   .add-webui-btn:hover { background: rgba(95,190,255,.12); }
   .add-webui-btn {
     pointer-events: auto;
+    margin-top: 7vh;
     padding: 10px 28px;
     background: var(--input-bg);
     border: 1px solid var(--accent); border-radius: 8px;
