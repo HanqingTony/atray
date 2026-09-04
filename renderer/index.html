@@ -30,6 +30,26 @@
     z-index: 1; pointer-events: none;
   }
   #empty-hint .big { font-size: 20px; color: var(--accent); }
+  .add-webui-btn {
+    pointer-events: auto;
+    padding: 10px 28px;
+    background: var(--input-bg);
+    border: 1px solid var(--accent); border-radius: 8px;
+    color: var(--accent); font-size: 15px;
+    cursor: pointer; font-family: inherit;
+    box-shadow: 0 4px 16px rgba(0,0,0,.4);
+  }
+  .add-webui-btn:hover { background: rgba(95,190,255,.12); }
+  .add-webui-btn {
+    pointer-events: auto;
+    padding: 10px 28px;
+    background: var(--input-bg);
+    border: 1px solid var(--accent); border-radius: 8px;
+    color: var(--accent); font-size: 15px;
+    cursor: pointer; font-family: inherit;
+    box-shadow: 0 4px 16px rgba(0,0,0,.4);
+  }
+  .add-webui-btn:hover { background: rgba(95,190,255,.12); }
   #plugin-views { position: fixed; inset: 0; display: none; z-index: 50; }
   #plugin-views iframe { width: 100%; height: 100%; border: none; background: #161a22; }
   /* 底部工具栏：贴左下角方框按钮 */
@@ -123,7 +143,7 @@
 <div id="overlay">
   <div id="empty-hint">
     <div class="big">atray</div>
-    <div>在「设置 → web 应用」中添加应用链接</div>
+    <button class="add-webui-btn" id="add-webui-btn">＋ 添加web应用</button>
   </div>
   <div id="plugin-views"></div>
   <div id="bottom-bar">
@@ -291,8 +311,8 @@ function switchMenu(menu) {
   else if (menu === 'apps') renderAppList();
 }
 
-function openSettings() {
-  switchMenu('hotkey');
+function openSettings(menu) {
+  switchMenu(menu || 'hotkey');
   settingsMask.style.display = 'flex';
 }
 function closeSettings() {
@@ -476,6 +496,8 @@ document.getElementById('main-hk-btn').onclick = () => startCapture('main');
 document.getElementById('s-ok').onclick = closeSettings;
 document.getElementById('settings-btn').onclick = () => { openSettings(); };
 document.getElementById('main-panel-btn').onclick = () => activatePlugin(null);
+document.getElementById('add-webui-btn').onclick = () => openSettings('apps');
+document.getElementById('add-webui-btn').onclick = () => openSettings('apps');
 
 // 启动
 window.addEventListener('DOMContentLoaded', async () => {
