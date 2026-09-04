@@ -12,6 +12,7 @@
     --text: #d6dae2;
     --text-dim: #8f96a3;
     --input-bg: #22252c;
+    --warm: #f5c86e;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -20,30 +21,18 @@
     font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
     user-select: none;
   }
-  /* 变暗层：全屏半透明 */
-  #overlay {
-    position: fixed; inset: 0;
-    background: rgba(8, 10, 16, 0.62);
-  }
-  /* 主面板空态提示 */
+  #overlay { position: fixed; inset: 0; background: rgba(8, 10, 16, 0.62); }
   #empty-hint {
     position: fixed; inset: 0;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    gap: 10px;
-    color: var(--text-dim); font-size: 15px;
+    gap: 10px; color: var(--text-dim); font-size: 15px;
     z-index: 1; pointer-events: none;
   }
   #empty-hint .big { font-size: 20px; color: var(--accent); }
-  /* 插件容器：iframe 铺满 */
-  #plugin-views {
-    position: fixed; inset: 0;
-    display: none; z-index: 50;
-  }
-  #plugin-views iframe {
-    width: 100%; height: 100%; border: none; background: #161a22;
-  }
-  /* 底部工具栏：贴左下角的方框按钮一排（设置 | 主面板 | 插件…） */
+  #plugin-views { position: fixed; inset: 0; display: none; z-index: 50; }
+  #plugin-views iframe { width: 100%; height: 100%; border: none; background: #161a22; }
+  /* 底部工具栏：贴左下角方框按钮 */
   #bottom-bar {
     position: fixed; left: 0; bottom: 0;
     display: flex; align-items: stretch; gap: 0;
@@ -62,7 +51,7 @@
   .b-btn:hover { border-color: var(--accent); color: var(--accent); z-index: 1; }
   .b-btn.active { border-color: var(--accent); color: var(--accent); background: var(--card); z-index: 1; }
   .hidden { display: none !important; }
-  /* 设置对话框 */
+  /* 设置面板 */
   #settings-mask {
     display: none; position: fixed; inset: 0;
     background: rgba(8, 10, 16, 0.6);
@@ -70,7 +59,7 @@
     z-index: 300;
   }
   #settings-box {
-    width: 460px;
+    width: 520px; max-height: 82vh;
     background: var(--card); border: 1px solid #6a7a8f; border-radius: 12px;
     padding: 18px; display: flex; flex-direction: column; gap: 12px;
   }
@@ -84,7 +73,7 @@
   }
   .s-menu-item:hover { color: var(--text); }
   .s-menu-item.active { border-color: var(--card-border); background: var(--input-bg); color: var(--accent); }
-  #s-body { display: flex; flex-direction: column; gap: 10px; min-height: 190px; }
+  #s-body { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
   .s-page { display: flex; flex-direction: column; gap: 8px; }
   #settings-box label { font-size: 12px; color: var(--text-dim); }
   #settings-box input {
@@ -93,29 +82,33 @@
     color: var(--text); font-size: 14px; padding: 0 10px; outline: none; font-family: inherit;
   }
   #settings-box input:focus { border-color: var(--accent); }
-  #hotkey-hint {
-    background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 6px;
-    padding: 10px 12px; font-size: 16px; color: #f5c86e; text-align: center;
-    letter-spacing: 1px; min-height: 42px; display: flex; align-items: center; justify-content: center;
-  }
-  #hotkey-hint:focus { outline: none; }
-  #hotkey-err { color: #ff7878; font-size: 12px; min-height: 14px; }
   .btn {
     padding: 4px 14px; border-radius: 6px; border: 1px solid var(--card-border);
     background: #303540; color: var(--text); cursor: pointer; font-size: 13px;
   }
   .btn:hover { border-color: var(--accent); }
   .s-row { display: flex; gap: 8px; justify-content: flex-end; }
-  #plugin-list { display: flex; flex-direction: column; gap: 6px; max-height: 210px; overflow-y: auto; }
-  .plugin-row {
+  /* 快捷键行 */
+  .hk-row {
     display: flex; align-items: center; gap: 8px;
     background: var(--input-bg); border: 1px solid var(--card-border);
     border-radius: 6px; padding: 6px 10px; font-size: 13px;
   }
-  .plugin-row .p-name { color: var(--text); flex: none; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .plugin-row .p-url { color: var(--text-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-  .plugin-row .p-hot { color: #f5c86e; font-size: 12px; flex: none; }
-  .plugin-row .btn { padding: 2px 10px; font-size: 12px; }
+  .hk-row.capturing { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(95,190,255,.4); }
+  .hk-row .hk-name { color: var(--text); flex: none; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hk-row .hk-value { color: var(--warm); flex: 1; font-size: 13px; letter-spacing: .5px; }
+  .hk-row .hk-value.empty { color: var(--text-dim); font-style: italic; }
+  .hk-row .btn { padding: 2px 10px; font-size: 12px; }
+  #app-list { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+  .app-row {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--input-bg); border: 1px solid var(--card-border);
+    border-radius: 6px; padding: 6px 10px; font-size: 13px;
+  }
+  .app-row .a-name { color: var(--text); flex: none; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .app-row .a-url { color: var(--text-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+  .app-row .a-hot { color: var(--warm); font-size: 12px; flex: none; min-width: 90px; text-align: right; }
+  .app-row .btn { padding: 2px 10px; font-size: 12px; }
   .p-add { display: flex; gap: 6px; }
   .p-add input {
     flex: 1; height: 30px;
@@ -123,17 +116,18 @@
     color: var(--text); font-size: 13px; padding: 0 10px; outline: none; font-family: inherit;
   }
   .p-add input:focus { border-color: var(--accent); }
+  #hotkey-err { color: #ff7878; font-size: 12px; min-height: 14px; }
 </style>
 </head>
 <body>
 <div id="overlay">
   <div id="empty-hint">
     <div class="big">atray</div>
-    <div>在「设置 → 插件管理」中添加 webui 链接</div>
+    <div>在「设置 → web 应用」中添加应用链接</div>
   </div>
   <div id="plugin-views"></div>
   <div id="bottom-bar">
-    <button class="b-btn" id="settings-btn" title="设置（快捷键 / 插件管理）">⚙ 设置</button>
+    <button class="b-btn" id="settings-btn" title="设置（快捷键 / web 应用）">⚙ 设置</button>
     <button class="b-btn" id="main-panel-btn" data-plugin="__main__" title="主面板">主面板</button>
   </div>
   <div id="settings-mask">
@@ -141,27 +135,32 @@
       <h3>设置</h3>
       <div id="s-menu">
         <button class="s-menu-item active" data-menu="hotkey">快捷键</button>
-        <button class="s-menu-item" data-menu="plugins">插件管理</button>
+        <button class="s-menu-item" data-menu="apps">web 应用</button>
       </div>
       <div id="s-body">
         <div class="s-page" id="s-page-hotkey">
-          <label>全局快捷键（呼出/隐藏覆盖层；按下新组合）</label>
-          <div id="hotkey-hint" tabindex="0">（等待按键…）</div>
+          <label>总快捷键：呼出/隐藏覆盖层（点「设置」后按新组合，即时生效）</label>
+          <div class="hk-row" id="main-hk-row">
+            <span class="hk-name">总快捷键</span>
+            <span class="hk-value" id="main-hk-value">…</span>
+            <button class="btn hk-set" id="main-hk-btn">设置</button>
+          </div>
+          <label>各 web 应用快捷键：按下直接切换到对应应用（点「设置」后按新组合，Esc 取消）</label>
+          <div id="app-hk-list"></div>
           <div id="hotkey-err"></div>
         </div>
-        <div class="s-page hidden" id="s-page-plugins">
-          <label>插件（webui 链接；每个可设快捷键直接呼出）</label>
-          <div id="plugin-list"></div>
+        <div class="s-page hidden" id="s-page-apps">
+          <label>web 应用（输入 URL 添加；删除即时生效）</label>
+          <div id="app-list"></div>
           <div class="p-add">
-            <input id="p-url" placeholder="插件 URL（http(s):// 或 atray://localhost/…）" spellcheck="false">
+            <input id="p-url" placeholder="应用 URL（http(s):// 或 atray://localhost/…）" spellcheck="false">
             <input id="p-name" placeholder="名称（可选）" spellcheck="false">
             <button class="btn" id="p-add-btn">添加</button>
           </div>
         </div>
       </div>
       <div class="s-row">
-        <button class="btn" id="s-cancel">取消</button>
-        <button class="btn" id="s-ok">确定</button>
+        <button class="btn" id="s-ok">完成</button>
       </div>
     </div>
   </div>
@@ -201,13 +200,14 @@ function showToast(text) {
   toastTimer = setTimeout(() => { t.style.display = 'none'; }, 2600);
 }
 
-// ---------- 插件系统 ----------
+// ---------- web 应用系统 ----------
 const pluginBar = document.getElementById('bottom-bar');
 const pluginViews = document.getElementById('plugin-views');
 const emptyHint = document.getElementById('empty-hint');
-let pluginFrames = {};   // id -> iframe
-let pluginCfgs = [];     // [{id, name, url, hotkey}]
-let activePlugin = null; // 当前激活的插件 id（null = 主面板空态）
+let pluginFrames = {};
+let appCfgs = [];        // web 应用列表 [{id, name, url, hotkey}]
+let activePlugin = null; // 当前激活应用 id（null = 主面板）
+let mainHotkey = 'Alt+Shift+A';
 
 function activatePlugin(id) {
   activePlugin = id;
@@ -231,7 +231,7 @@ function buildPluginUI() {
   pluginBar.querySelectorAll('.b-btn[data-plugin]').forEach((b) => b.remove());
   pluginViews.innerHTML = '';
   pluginFrames = {};
-  for (const p of pluginCfgs) {
+  for (const p of appCfgs) {
     if (!p.id || !p.url) continue;
     const tab = document.createElement('button');
     tab.className = 'b-btn';
@@ -249,24 +249,15 @@ function buildPluginUI() {
   }
 }
 
-async function loadPlugins() {
-  try {
-    const r = await atrayApi.getConfig();
-    if (r.status === 'ok' && r.data.plugins) pluginCfgs = r.data.plugins;
-  } catch (e) {}
-  buildPluginUI();
-  if (pluginCfgs.length) activatePlugin(pluginCfgs[0].id);
-  else activatePlugin(null);
-}
-
 atrayApi.onPluginActivate((id) => {
   if (!pluginFrames[id]) return;
   activatePlugin(id);
 });
 
-// Esc：插件中先回主面板；主面板时隐藏窗口
+// Esc：应用中先回主面板；主面板时隐藏窗口
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    if (settingsMask.style.display === 'flex') { closeSettings(); return; }
     if (activePlugin !== null) {
       activatePlugin(null);
       e.stopPropagation();
@@ -276,23 +267,38 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// 窗口 shown：若停在主面板且有插件，进入第一个插件
 atrayApi.onEvent((event) => {
-  if (event === 'shown' && activePlugin === null && pluginCfgs.length) {
-    activatePlugin(pluginCfgs[0].id);
+  if (event === 'shown' && activePlugin === null && appCfgs.length) {
+    activatePlugin(appCfgs[0].id);
   }
 });
+atrayApi.onMenu(() => { openSettings(); });
 
-// 托盘菜单事件 → 设置
-atrayApi.onMenu(() => {
-  openSettings();
-});
-
-// ---------- 设置菜单（快捷键 / 插件管理） ----------
+// ---------- 设置面板（快捷键 / web 应用） ----------
 const settingsMask = document.getElementById('settings-mask');
 let settingsMode = 'hotkey';
-let pendingHotkey = null;
-let pendingPluginHotkeyId = null;
+let capturing = null; // 正在捕获快捷键的目标：'main' 或 应用 id
+
+function switchMenu(menu) {
+  cancelCapture();
+  settingsMode = menu;
+  document.querySelectorAll('#s-menu .s-menu-item').forEach((b) => {
+    b.classList.toggle('active', b.dataset.menu === menu);
+  });
+  document.getElementById('s-page-hotkey').classList.toggle('hidden', menu !== 'hotkey');
+  document.getElementById('s-page-apps').classList.toggle('hidden', menu !== 'apps');
+  if (menu === 'hotkey') renderHkList();
+  else if (menu === 'apps') renderAppList();
+}
+
+function openSettings() {
+  switchMenu('hotkey');
+  settingsMask.style.display = 'flex';
+}
+function closeSettings() {
+  cancelCapture();
+  settingsMask.style.display = 'none';
+}
 
 function normalizeHotkey(parts) {
   const mods = [];
@@ -304,103 +310,148 @@ function normalizeHotkey(parts) {
   return mods.concat(key).join('+');
 }
 
-function switchMenu(menu) {
-  settingsMode = menu;
-  document.querySelectorAll('#s-menu .s-menu-item').forEach((b) => {
-    b.classList.toggle('active', b.dataset.menu === menu);
-  });
-  document.getElementById('s-page-hotkey').classList.toggle('hidden', menu !== 'hotkey');
-  document.getElementById('s-page-plugins').classList.toggle('hidden', menu !== 'plugins');
-  if (menu === 'hotkey') document.getElementById('hotkey-hint').focus();
-  else if (menu === 'plugins') renderPluginList();
-}
-
-function openSettings() {
-  switchMenu('hotkey');
-  pendingHotkey = null;
-  pendingPluginHotkeyId = null;
-  document.getElementById('hotkey-err').textContent = '';
-  document.getElementById('hotkey-hint').textContent = '（等待按键…）';
-  settingsMask.style.display = 'flex';
-}
-function closeSettings() {
-  settingsMask.style.display = 'none';
-  pendingPluginHotkeyId = null;
-}
-
-async function applySettings() {
-  if (settingsMode === 'hotkey') {
-    if (!pendingHotkey) { showToast('请先按下新组合键'); return; }
-    const r = await atrayApi.setHotkey(pendingHotkey);
-    if (r.status === 'ok') {
-      showToast('快捷键已更新：' + pendingHotkey);
-      closeSettings();
-    } else {
-      document.getElementById('hotkey-err').textContent = String(r.data || '设置失败');
-    }
-  }
-}
-
-// ---------- 插件管理 ----------
-function renderPluginList() {
-  const list = document.getElementById('plugin-list');
+// 快捷键页：总快捷键 + 各应用快捷键，全部可见可设
+function renderHkList() {
+  document.getElementById('main-hk-value').textContent = mainHotkey;
+  const list = document.getElementById('app-hk-list');
   list.innerHTML = '';
-  if (!pluginCfgs.length) {
+  if (!appCfgs.length) {
     const empty = document.createElement('div');
-    empty.style.cssText = 'color: var(--text-dim); font-size: 12px; padding: 8px 4px;';
-    empty.textContent = '（暂无插件：输入 webui 链接添加）';
+    empty.style.cssText = 'color: var(--text-dim); font-size: 12px; padding: 6px 2px;';
+    empty.textContent = '（暂无 web 应用，到「web 应用」页添加）';
     list.appendChild(empty);
     return;
   }
-  for (const p of pluginCfgs) {
+  for (const p of appCfgs) {
     const row = document.createElement('div');
-    row.className = 'plugin-row';
+    row.className = 'hk-row';
+    row.dataset.target = p.id;
     const name = document.createElement('span');
-    name.className = 'p-name';
+    name.className = 'hk-name';
     name.textContent = p.name || p.id;
-    name.title = p.id;
-    const url = document.createElement('span');
-    url.className = 'p-url';
-    url.textContent = p.url;
-    const hot = document.createElement('span');
-    hot.className = 'p-hot';
-    hot.textContent = p.hotkey || '';
-    const hkBtn = document.createElement('button');
-    hkBtn.className = 'btn';
-    hkBtn.textContent = '快捷键';
-    hkBtn.onclick = () => {
-      pendingPluginHotkeyId = p.id;
-      switchMenu('hotkey');
-      document.getElementById('hotkey-hint').textContent =
-        '为「' + (p.name || p.id) + '」按下组合键（Esc 取消）…';
-      document.getElementById('hotkey-hint').focus();
-    };
-    const delBtn = document.createElement('button');
-    delBtn.className = 'btn';
-    delBtn.textContent = '删除';
-    delBtn.onclick = () => {
-      if (!confirm('删除插件「' + (p.name || p.id) + '」？')) return;
-      pluginCfgs = pluginCfgs.filter((x) => x.id !== p.id);
-      savePlugins();
-    };
-    row.append(name, url, hot, hkBtn, delBtn);
+    name.title = p.url;
+    const value = document.createElement('span');
+    value.className = 'hk-value' + (p.hotkey ? '' : ' empty');
+    value.textContent = p.hotkey || '（未设置）';
+    const btn = document.createElement('button');
+    btn.className = 'btn hk-set';
+    btn.textContent = '设置';
+    btn.onclick = () => startCapture(p.id);
+    row.append(name, value, btn);
     list.appendChild(row);
   }
 }
 
-function savePlugins() {
-  atrayApi.setConfig({plugins: pluginCfgs}).then(() => {
-    showToast('插件配置已保存');
-    buildPluginUI();
-    renderPluginList();
-    if (!pluginCfgs.length) activatePlugin(null);
+// 开始捕获快捷键（目标行高亮 + 提示）
+function startCapture(target) {
+  cancelCapture();
+  capturing = target;
+  document.querySelectorAll('.hk-row').forEach((r) => {
+    r.classList.toggle('capturing', (target === 'main' && r.id === 'main-hk-row') ||
+      (target !== 'main' && r.dataset.target === target));
+  });
+  showToast('按下新组合键（Alt/Ctrl/Shift + 键），Esc 取消');
+}
+
+function cancelCapture() {
+  if (capturing === null) return;
+  capturing = null;
+  document.querySelectorAll('.hk-row.capturing').forEach((r) => r.classList.remove('capturing'));
+  document.getElementById('hotkey-err').textContent = '';
+}
+
+// 捕获按键（设置面板打开时全局生效）
+document.addEventListener('keydown', (e) => {
+  if (settingsMask.style.display !== 'flex' || capturing === null) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.key === 'Escape') { cancelCapture(); return; }
+  const parts = {alt: e.altKey, ctrl: e.ctrlKey, shift: e.shiftKey};
+  const k = e.key;
+  const mods = parts.alt || parts.ctrl || parts.shift;
+  if (!mods) return;
+  if (/^[A-Za-z0-9]$/.test(k)) parts.key = k.toUpperCase();
+  else if (/^F([1-9]|1[0-2])$/.test(k)) parts.key = k;
+  else return;
+  if (!parts.alt && !parts.ctrl && parts.shift) return;
+  const combo = normalizeHotkey(parts);
+  const target = capturing;
+  cancelCapture();
+  if (target === 'main') {
+    // 总快捷键：即时保存（Rust 注册/持久化）
+    atrayApi.setHotkey(combo).then((r) => {
+      if (r.status === 'ok') {
+        mainHotkey = combo;
+        document.getElementById('main-hk-value').textContent = combo;
+        showToast('总快捷键：' + combo);
+      } else {
+        document.getElementById('hotkey-err').textContent = String(r.data || '设置失败');
+      }
+    });
+  } else {
+    // 应用快捷键：即时保存（config 持久化 + Rust 注册）
+    const p = appCfgs.find((x) => x.id === target);
+    if (p) {
+      p.hotkey = combo;
+      saveApps(false);
+      renderHkList();
+      showToast('「' + (p.name || p.id) + '」快捷键：' + combo);
+    }
+  }
+});
+
+// ---------- web 应用管理页 ----------
+function renderAppList() {
+  const list = document.getElementById('app-list');
+  list.innerHTML = '';
+  if (!appCfgs.length) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'color: var(--text-dim); font-size: 12px; padding: 8px 4px;';
+    empty.textContent = '（暂无 web 应用：输入 URL 添加）';
+    list.appendChild(empty);
+    return;
+  }
+  for (const p of appCfgs) {
+    const row = document.createElement('div');
+    row.className = 'app-row';
+    const name = document.createElement('span');
+    name.className = 'a-name';
+    name.textContent = p.name || p.id;
+    name.title = p.id;
+    const url = document.createElement('span');
+    url.className = 'a-url';
+    url.textContent = p.url;
+    const hot = document.createElement('span');
+    hot.className = 'a-hot';
+    hot.textContent = p.hotkey || '';
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn';
+    delBtn.textContent = '删除';
+    delBtn.onclick = () => {
+      if (!confirm('删除 web 应用「' + (p.name || p.id) + '」？')) return;
+      appCfgs = appCfgs.filter((x) => x.id !== p.id);
+      saveApps(true);
+      renderHkList();
+    };
+    row.append(name, url, hot, delBtn);
+    list.appendChild(row);
+  }
+}
+
+// 保存应用列表（即时生效）；rebuild 决定是否重建界面
+function saveApps(rebuild) {
+  atrayApi.setConfig({plugins: appCfgs}).then(() => {
+    if (rebuild) {
+      buildPluginUI();
+      if (!appCfgs.length) activatePlugin(null);
+    }
   });
 }
 
 document.getElementById('p-add-btn').onclick = () => {
   const url = document.getElementById('p-url').value.trim();
   const name = document.getElementById('p-name').value.trim();
-  if (!url) { showToast('请输入插件 URL'); return; }
+  if (!url) { showToast('请输入应用 URL'); return; }
   if (!/^(https?:\/\/|atray:\/\/)/.test(url)) {
     showToast('URL 需以 http(s):// 或 atray:// 开头');
     return;
@@ -408,70 +459,36 @@ document.getElementById('p-add-btn').onclick = () => {
   const base = (name || url).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   let id = base || ('p' + Date.now());
   let i = 2;
-  while (pluginCfgs.some((p) => p.id === id)) id = base + '-' + (i++);
-  pluginCfgs.push({id, name: name || url, url});
+  while (appCfgs.some((p) => p.id === id)) id = base + '-' + (i++);
+  appCfgs.push({id, name: name || url, url});
   document.getElementById('p-url').value = '';
   document.getElementById('p-name').value = '';
-  savePlugins();
+  saveApps(true);
+  renderHkList();
+  showToast('已添加「' + (name || url) + '」');
 };
 
 // ---------- 绑定 ----------
 document.querySelectorAll('#s-menu .s-menu-item').forEach((b) => {
   b.onclick = () => switchMenu(b.dataset.menu);
 });
-document.getElementById('s-ok').onclick = applySettings;
-document.getElementById('s-cancel').onclick = closeSettings;
+document.getElementById('main-hk-btn').onclick = () => startCapture('main');
+document.getElementById('s-ok').onclick = closeSettings;
 document.getElementById('settings-btn').onclick = () => { openSettings(); };
 document.getElementById('main-panel-btn').onclick = () => activatePlugin(null);
-
-// 快捷键捕获：Alt/Ctrl/Shift + 字母/数字/功能键（全局与插件共用）
-document.getElementById('hotkey-hint').addEventListener('keydown', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  const parts = {alt: e.altKey, ctrl: e.ctrlKey, shift: e.shiftKey};
-  const k = e.key;
-  const mods = parts.alt || parts.ctrl || parts.shift;
-  if (!mods) return;
-  if (/^[A-Za-z0-9]$/.test(k)) {
-    parts.key = k.toUpperCase();
-  } else if (/^F([1-9]|1[0-2])$/.test(k)) {
-    parts.key = k;
-  } else {
-    return;
-  }
-  if (!parts.alt && !parts.ctrl && parts.shift) return;
-  pendingHotkey = normalizeHotkey(parts);
-  document.getElementById('hotkey-hint').textContent = pendingHotkey;
-  if (pendingPluginHotkeyId) {
-    const pid = pendingPluginHotkeyId;
-    pendingPluginHotkeyId = null;
-    const p = pluginCfgs.find((x) => x.id === pid);
-    if (p) {
-      p.hotkey = pendingHotkey;
-      savePlugins();
-      switchMenu('plugins');
-      showToast('插件快捷键：' + pendingHotkey);
-    }
-  }
-});
-document.getElementById('hotkey-hint').addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    e.preventDefault();
-    pendingPluginHotkeyId = null;
-    document.getElementById('hotkey-hint').textContent = '（等待按键…）';
-    document.getElementById('hotkey-err').textContent = '';
-  }
-});
 
 // 启动
 window.addEventListener('DOMContentLoaded', async () => {
   try {
     const r = await atrayApi.getConfig();
-    if (r.status === 'ok' && r.data.hotkey) {
-      document.title = 'atray · ' + r.data.hotkey;
+    if (r.status === 'ok') {
+      if (r.data.hotkey) mainHotkey = r.data.hotkey;
+      if (r.data.plugins) appCfgs = r.data.plugins;
     }
   } catch (e) {}
-  loadPlugins();
+  buildPluginUI();
+  if (appCfgs.length) activatePlugin(appCfgs[0].id);
+  else activatePlugin(null);
 });
 </script>
 </body>
