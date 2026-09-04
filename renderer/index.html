@@ -80,9 +80,9 @@
   }
   #plugin-views { position: fixed; inset: 0; display: none; z-index: 50; }
   #plugin-views iframe { width: 100%; height: 100%; border: none; background: #161a22; }
-  /* 右上角小退出按钮 */
+  /* 隐藏按钮（≡ 快捷键语义）：紧贴屏幕角（布局可配置四角位置） */
   #quit-btn {
-    position: fixed; top: 10px; right: 10px;
+    position: fixed;
     width: 22px; height: 22px;
     display: flex; align-items: center; justify-content: center;
     background: rgba(30, 33, 40, 0.75);
@@ -93,12 +93,19 @@
     z-index: 200;
   }
   #quit-btn:hover { border-color: #ff7878; color: #ff7878; background: rgba(60, 30, 34, 0.8); }
-  /* 底部工具栏：贴左下角方框按钮 */
+  #quit-btn.tl { top: 0; left: 0; }
+  #quit-btn.tr { top: 0; right: 0; }
+  #quit-btn.bl { bottom: 0; left: 0; }
+  #quit-btn.br { bottom: 0; right: 0; }
+  /* 底部工具栏（菜单栏）：位置可配置（左下/右下/底部居中） */
   #bottom-bar {
-    position: fixed; left: 0; bottom: 0;
+    position: fixed;
     display: flex; align-items: stretch; gap: 0;
     z-index: 150;
   }
+  #bottom-bar.bl { left: 0; bottom: 0; }
+  #bottom-bar.br { right: 0; bottom: 0; }
+  #bottom-bar.bc { left: 50%; transform: translateX(-50%); bottom: 0; }
   .b-btn {
     padding: 9px 16px;
     background: var(--input-bg);
@@ -178,6 +185,10 @@
   }
   .p-add input:focus { border-color: var(--accent); }
   #hotkey-err { color: #ff7878; font-size: 12px; min-height: 14px; }
+  .pos-group { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pos-group .btn { padding: 3px 12px; font-size: 12px; }
+  .pos-group .btn.on { border-color: var(--accent); color: var(--accent); background: rgba(95,190,255,.12); }
+  .hint { color: var(--text-dim); font-size: 11px; }
 </style>
 </head>
 <body>
@@ -198,6 +209,7 @@
       <div id="s-menu">
         <button class="s-menu-item active" data-menu="hotkey">快捷键</button>
         <button class="s-menu-item" data-menu="apps">web 应用</button>
+        <button class="s-menu-item" data-menu="layout">布局</button>
       </div>
       <div id="s-body">
         <div class="s-page" id="s-page-hotkey">
@@ -219,6 +231,13 @@
             <input id="p-name" placeholder="名称（可选）" spellcheck="false">
             <button class="btn" id="p-add-btn">添加</button>
           </div>
+        </div>
+        <div class="s-page hidden" id="s-page-layout">
+          <label>隐藏按钮位置（点击 = 隐藏覆盖层；与菜单栏不能同角）</label>
+          <div id="quit-pos-group" class="pos-group"></div>
+          <label>菜单栏位置</label>
+          <div id="bar-pos-group" class="pos-group"></div>
+          <div class="hint">改动即时生效并记忆</div>
         </div>
       </div>
       <div class="s-row">
@@ -337,6 +356,67 @@ atrayApi.onEvent((event) => {
 });
 atrayApi.onMenu(() => { openSettings(); });
 
+// ---------- 布局配置（localStorage 记忆；quit 与菜单栏不能同角） ----------
+const POS_LABEL = {tl: '左上', tr: '右上', bl: '左下', br: '右下'};
+let layout = {quitPos: 'tr', barPos: 'bl'};
+const QUIT_ID = document.getElementById('quit-btn');
+const BAR_ID = document.getElementById('bottom-bar');
+
+function loadLayout() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('atray.layout') || '{}');
+    if (saved.quitPos) layout.quitPos = saved.quitPos;
+    if (saved.barPos) layout.barPos = saved.barPos;
+  } catch (e) {}
+}
+function saveLayout() {
+  localStorage.setItem('atray.layout', JSON.stringify(layout));
+}
+function applyLayout() {
+  // 隐藏按钮位置
+  QUIT_ID.className = QUIT_ID.className.split(' ')[0] + ' ' + layout.quitPos;
+  // 菜单栏位置
+  BAR_ID.className = 'bl'; // 重置基础类
+  BAR_ID.classList.remove('bl', 'br', 'bc');
+  BAR_ID.classList.add(layout.barPos);
+}
+
+// 渲染布局页选项组
+function renderPosGroup(container, opts, current, onChange) {
+  container.innerHTML = '';
+  for (const [key, label] of opts) {
+    const b = document.createElement('button');
+    b.className = 'btn' + (key === current ? ' on' : '');
+    b.textContent = label;
+    b.onclick = () => onChange(key, b);
+    container.appendChild(b);
+  }
+}
+function renderLayoutPage() {
+  const quitOpts = [['tl','左上'],['tr','右上'],['bl','左下'],['br','右下']];
+  const barOpts = [['bl','左下'],['br','右下'],['bc','底部居中']];
+  renderPosGroup(document.getElementById('quit-pos-group'), quitOpts, layout.quitPos, (key) => {
+    // 互斥：不能与菜单栏同角（bl/br）
+    if ((key === 'bl' || key === 'br') && key === layout.barPos) {
+      showToast('隐藏按钮与菜单栏不能同角');
+      return;
+    }
+    layout.quitPos = key;
+    saveLayout(); applyLayout(); renderLayoutPage();
+    showToast('隐藏按钮：' + POS_LABEL[key]);
+  });
+  renderPosGroup(document.getElementById('bar-pos-group'), barOpts, layout.barPos, (key) => {
+    // 互斥：barPos 的 bl/br 与 quitPos 同角时拒绝
+    if (layout.quitPos === key) {
+      showToast('菜单栏与隐藏按钮不能同角');
+      return;
+    }
+    layout.barPos = key;
+    saveLayout(); applyLayout(); renderLayoutPage();
+    showToast('菜单栏：' + POS_LABEL[key]);
+  });
+}
+
 // ---------- 设置面板（快捷键 / web 应用） ----------
 const settingsMask = document.getElementById('settings-mask');
 let settingsMode = 'hotkey';
@@ -350,8 +430,10 @@ function switchMenu(menu) {
   });
   document.getElementById('s-page-hotkey').classList.toggle('hidden', menu !== 'hotkey');
   document.getElementById('s-page-apps').classList.toggle('hidden', menu !== 'apps');
+  document.getElementById('s-page-layout').classList.toggle('hidden', menu !== 'layout');
   if (menu === 'hotkey') renderHkList();
   else if (menu === 'apps') renderAppList();
+  else if (menu === 'layout') renderLayoutPage();
 }
 
 function openSettings(menu) {
@@ -540,12 +622,14 @@ document.getElementById('s-ok').onclick = closeSettings;
 document.getElementById('settings-btn').onclick = () => { openSettings(); };
 document.getElementById('main-panel-btn').onclick = () => activatePlugin(null);
 document.getElementById('add-webui-btn').onclick = () => openSettings('apps');
-document.getElementById('quit-btn').onclick = () => atrayApi.quit();
+document.getElementById('quit-btn').onclick = () => atrayApi.hide();
 document.getElementById('add-webui-btn').onclick = () => openSettings('apps');
-document.getElementById('quit-btn').onclick = () => atrayApi.quit();
+document.getElementById('quit-btn').onclick = () => atrayApi.hide();
 
 // 启动
 window.addEventListener('DOMContentLoaded', async () => {
+  loadLayout();
+  applyLayout();
   try {
     const r = await atrayApi.getConfig();
     if (r.status === 'ok') {
