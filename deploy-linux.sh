@@ -39,12 +39,12 @@ timeout 60 ssh "$HOST" "
   if [ -e /run/user/\$UID_N/wayland-0 ]; then
     export WAYLAND_DISPLAY=wayland-0
   fi
-  # X11(GDK)环境:从图形会话进程继承 DISPLAY/XAUTHORITY(atray 强制 X11 后端)
+  # X11(GDK)与桌面类型环境:从图形会话进程继承(atray 据此选热键后端)
   for p in plasmashell kwin_wayland gnome-shell; do
     pid=\$(pgrep -x \$p 2>/dev/null | head -1)
     if [ -n \"\$pid\" ]; then
-      eval \"\$(tr '\0' '\n' < /proc/\$pid/environ 2>/dev/null | grep -E '^(DISPLAY|XAUTHORITY)=')\"
-      export DISPLAY XAUTHORITY
+      eval \"\$(tr '\0' '\n' < /proc/\$pid/environ 2>/dev/null | grep -E '^(DISPLAY|XAUTHORITY|XDG_CURRENT_DESKTOP)=')\"
+      export DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP
       [ -n \"\${DISPLAY:-}\" ] && break
     fi
   done

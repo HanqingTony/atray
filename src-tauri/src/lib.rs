@@ -14,13 +14,19 @@ use std::sync::Mutex;
 use tauri::{Emitter, Manager, State};
 
 #[cfg(target_os = "linux")]
+mod kglobalaccel;
+#[cfg(target_os = "linux")]
 mod portal;
 
-/// 热键后端：native = tauri 插件（Windows / X11）；portal = XDG Desktop Portal
-/// GlobalShortcuts（Linux Wayland，跨 KDE/GNOME 等桌面）。
+/// 热键后端：
+///   native = tauri 插件（Windows / X11）
+///   kga    = KDE KGlobalAccel 直连（固定组件 atray，幂等，键持久化在系统设置；
+///            Linux Wayland + KDE 时用）
+///   portal = XDG Desktop Portal GlobalShortcuts（Linux Wayland，GNOME/Hyprland 等）
 #[derive(Clone, Copy, PartialEq)]
 enum Backend {
     Native,
+    Kga,
     Portal,
 }
 
@@ -186,10 +192,10 @@ fn atray_set_config(app: tauri::AppHandle, cfg: Option<serde_json::Value>) -> Ip
 /// 读取当前配置（前端显示用）。
 #[tauri::command]
 fn atray_get_config(state: State<AppState>) -> IpcResp {
-    let backend = if *state.backend.lock().unwrap() == Backend::Portal {
-        "portal"
-    } else {
-        "native"
+    let backend = match *state.backend.lock().unwrap() {
+        Backend::Portal => "portal",
+        Backend::Kga => "kga",
+        Backend::Native => "native",
     };
     let portal_keys: serde_json::Map<String, serde_json::Value> = state
         .portal_keys
@@ -219,6 +225,19 @@ fn atray_set_hotkey(app: tauri::AppHandle, state: State<AppState>, keys: String)
         #[cfg(target_os = "linux")]
         if portal::to_xdg_trigger(&keys).is_none() {
             return err(format!("该组合无法在 Wayland 全局热键中表达: {keys}（请用 Alt/Ctrl/Shift + 字母/数字/F 键）"));
+        }
+        *state.hotkey.lock().unwrap() = Some(keys.clone());
+        let mut cfg = load_config();
+        cfg.hotkey = Some(keys.clone());
+        save_config(&cfg);
+        notify_portal(&app);
+        return ok(serde_json::json!({ "ok": true, "hotkey": keys }));
+    }
+    // KGA 模式（KDE）：存配置 + 通知后端强制设键（kglobalacceld 持久化，即时生效）
+    if *state.backend.lock().unwrap() == Backend::Kga {
+        #[cfg(target_os = "linux")]
+        if kglobalaccel::to_qt_keys(&keys).is_none() {
+            return err(format!("该组合无法表达: {keys}（请用 Alt/Ctrl/Shift + 字母/数字/F 键）"));
         }
         *state.hotkey.lock().unwrap() = Some(keys.clone());
         let mut cfg = load_config();
@@ -266,6 +285,14 @@ fn atray_set_hotkey(app: tauri::AppHandle, state: State<AppState>, keys: String)
 #[tauri::command]
 fn atray_clear_hotkey(app: tauri::AppHandle, state: State<AppState>) -> IpcResp {
     if *state.backend.lock().unwrap() == Backend::Portal {
+        *state.hotkey.lock().unwrap() = None;
+        let mut cfg = load_config();
+        cfg.hotkey = None;
+        save_config(&cfg);
+        notify_portal(&app);
+        return ok(serde_json::json!({ "ok": true, "hotkey": null }));
+    }
+    if *state.backend.lock().unwrap() == Backend::Kga {
         *state.hotkey.lock().unwrap() = None;
         let mut cfg = load_config();
         cfg.hotkey = None;
@@ -331,9 +358,11 @@ fn atray_hide(app: tauri::AppHandle) -> IpcResp {
 
 /// 同步插件快捷键：注销被删/无热键的，注册新增/更新的（按下 = 显示窗口 + 通知前端激活插件）
 fn sync_plugin_shortcuts(app: &tauri::AppHandle, plugins: &[PluginCfg]) {
-    // portal 模式：快捷键由 portal 统一绑定（见 portal.rs），native 注册跳过
+    // portal/KGA 模式：快捷键由对应后端统一管理，native 注册跳过
     if let Some(state) = app.try_state::<AppState>() {
-        if *state.backend.lock().unwrap() == Backend::Portal {
+        if *state.backend.lock().unwrap() == Backend::Portal
+            || *state.backend.lock().unwrap() == Backend::Kga
+        {
             return;
         }
     }
@@ -395,10 +424,12 @@ fn sync_plugin_shortcuts(app: &tauri::AppHandle, plugins: &[PluginCfg]) {
 /// 纯前端 keydown 收不到跨源 iframe 内的按键，故走全局热键；但只在窗口激活时响应，
 /// 窗口隐藏/失焦时按下不做任何事（不抢其他程序的 Alt+数字）。
 fn sync_alt_shortcuts(app: &tauri::AppHandle, plugins: &[PluginCfg]) {
-    // portal 模式：Alt+数字 由 portal 表达代价高（10 个系统动作 + 全局触发语义不符，
+    // portal/KGA 模式：Alt+数字 由后端表达代价高（10 个系统动作 + 全局触发语义不符，
     // 该功能服务于窗口内切换），Wayland 下跳过；窗口内切换可用各应用自有快捷键
     if let Some(state) = app.try_state::<AppState>() {
-        if *state.backend.lock().unwrap() == Backend::Portal {
+        if *state.backend.lock().unwrap() == Backend::Portal
+            || *state.backend.lock().unwrap() == Backend::Kga
+        {
             return;
         }
     }
@@ -588,32 +619,47 @@ pub fn run() {
                 }
             }
 
-            // 热键后端选择：Linux Wayland 会话 → portal（XDG Desktop Portal
-            // GlobalShortcuts，跨 KDE/GNOME 等桌面）；否则 native（tauri 插件，
-            // Windows / X11）。注：XWayland 下 GTK 仍可能走 X11——portal 分支
-            // 失败时托盘仍可用（见 portal.rs 日志）。
-            let use_portal: bool = {
+            // 热键后端选择（Linux）：
+            //   1) KDE（org.kde.kglobalaccel 生态，XDG_CURRENT_DESKTOP 含 KDE）
+            //      → KGlobalAccel 直连：固定组件 atray，注册幂等，键持久化于
+            //      系统设置，无堆积无弹窗
+            //   2) 其它 Wayland 桌面（GNOME/Hyprland…）→ XDG Desktop Portal
+            //      GlobalShortcuts（跨桌面标准）
+            //   3) X11 会话 → native（tauri 插件）
+            let pick = |kga_ok: bool, portal_ok: bool| -> Backend {
+                if kga_ok {
+                    Backend::Kga
+                } else if portal_ok {
+                    Backend::Portal
+                } else {
+                    Backend::Native
+                }
+            };
+            let backend = {
                 #[cfg(target_os = "linux")]
                 {
-                    portal::should_use_portal()
+                    pick(kglobalaccel::available(), portal::should_use_portal())
                 }
                 #[cfg(not(target_os = "linux"))]
                 {
-                    false
+                    Backend::Native
                 }
             };
-            *app.state::<AppState>().backend.lock().unwrap() = if use_portal {
-                Backend::Portal
-            } else {
-                Backend::Native
-            };
+            *app.state::<AppState>().backend.lock().unwrap() = backend;
 
-            if use_portal {
-                // portal 后端：绑定 + 信号监听在异步任务中（首轮即绑定；
-                // 此后配置变更由 IPC 侧 notify_portal 触发重绑）
-                let tx = portal::spawn(app.handle().clone());
-                *app.state::<AppState>().portal_notify.lock().unwrap() = Some(tx);
-            } else {
+            match backend {
+                Backend::Kga => {
+                    // KGA 后端：注册 + 信号监听在异步任务中；配置变更由 IPC 侧通知
+                    let tx = kglobalaccel::spawn(app.handle().clone());
+                    *app.state::<AppState>().portal_notify.lock().unwrap() = Some(tx);
+                }
+                Backend::Portal => {
+                    // portal 后端：绑定 + 信号监听在异步任务中（首轮即绑定；
+                    // 此后配置变更由 IPC 侧 notify_portal 触发重绑）
+                    let tx = portal::spawn(app.handle().clone());
+                    *app.state::<AppState>().portal_notify.lock().unwrap() = Some(tx);
+                }
+                Backend::Native => {
                 // 插件快捷键（配置里带 hotkey 的插件）+ Alt+数字 序号切换
                 let plugins = load_config().plugins;
                 sync_plugin_shortcuts(app.handle(), &plugins);
@@ -650,6 +696,7 @@ pub fn run() {
                     }
                 }
             }
+            } // match backend
 
             // 系统托盘：显示 / 设置 / 退出
             use tauri::menu::{Menu, MenuItem};

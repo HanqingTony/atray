@@ -8,7 +8,16 @@
 //   - 监听 Activated 信号分发：toggle（呼出/隐藏）/ plugin:<id>（切换应用）
 //   - 配置变更（notify）→ 关闭旧 session → 重新绑定（再次弹系统对话框）
 //
-// 使用条件：Linux + Wayland 会话。Windows / X11 走 native（tauri 插件）不受影响。
+// 使用条件：Linux + Wayland 会话（非 KDE；KDE 走 kglobalaccel.rs 直连后端——
+// portal 通道不幂等 + Debian 打包缺陷，见 kglobalaccel.rs 文件头踩坑史）。
+// Windows / X11 走 native（tauri 插件）不受影响。
+//
+// 踩坑速记（详见 kglobalaccel.rs 文件头）：
+//   - Debian 13 portal-kde 6.3.5 缺对话框 QML → 绑定时无确认框、请求永久挂起
+//     （scripts/fix-kde-portal-qml.sh 修复）
+//   - allShortcutInfos 签名 a(ssssssaiai) = 6 串 + ai + ai（cleanup 反序列化
+//     写错会静默失效，热键冲突堆积）
+//   - cleanup 只能事后擦屁股；根治 = KGA 固定组件（见 kglobalaccel.rs）
 
 #![cfg(target_os = "linux")]
 
@@ -43,7 +52,7 @@ pub fn spawn(app: AppHandle) -> watch::Sender<bool> {
 /// 组件名 token_ashpd_*，同名快捷键堆积会导致 KGlobalAccel 冲突、热键失效）。
 /// 精确匹配：动作描述含「atray 覆盖层」（本应用写死的唯一标识），不误伤
 /// 其它走 portal 的应用（chromium 等同样建 token_ashpd_* 组件）。
-async fn cleanup_stale_atray(conn: &zbus::Connection) {
+pub(crate) async fn cleanup_stale_atray(conn: &zbus::Connection) {
     use ashpd::zbus::zvariant::OwnedObjectPath;
     let msg = match conn
         .call_method(
