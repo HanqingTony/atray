@@ -179,6 +179,9 @@
   .app-row .a-url { color: var(--text-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
   .app-row .a-hot { color: var(--warm); font-size: 12px; flex: none; min-width: 90px; text-align: right; }
   .app-row .btn { padding: 2px 10px; font-size: 12px; }
+  .btn:disabled { opacity: .35; cursor: default; }
+  .btn:disabled:hover { border-color: var(--card-border); }
+  .app-row .btn.mv { padding: 2px 7px; }
   .p-add { display: flex; gap: 6px; }
   .p-add input {
     flex: 1; height: 30px;
@@ -190,6 +193,16 @@
   .pos-group { display: flex; gap: 6px; flex-wrap: wrap; }
   .pos-group .btn { padding: 3px 12px; font-size: 12px; }
   .pos-group .btn.on { border-color: var(--accent); color: var(--accent); background: rgba(95,190,255,.12); }
+  /* 通用页选项行（开机启动等） */
+  .opt-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--input-bg); border: 1px solid var(--card-border);
+    border-radius: 6px; padding: 8px 12px; font-size: 13px;
+  }
+  .opt-text { color: var(--text); }
+  .opt-row .btn { min-width: 72px; }
+  .opt-row .btn.on { border-color: var(--accent); color: var(--accent); background: rgba(95,190,255,.12); }
+  #autostart-err { color: #ff7878; font-size: 12px; min-height: 14px; }
   .hint { color: var(--text-dim); font-size: 11px; }
 </style>
 </head>
@@ -202,31 +215,33 @@
   <div id="plugin-views"></div>
   <button id="quit-btn" title="退出 atray">✕</button>
   <div id="bottom-bar">
-    <button class="b-btn" id="settings-btn" title="设置（快捷键 / web 应用）">⚙ 设置</button>
+    <button class="b-btn" id="settings-btn" title="设置（web 应用 / 快捷键 / 布局 / 通用）">⚙ 设置</button>
     <button class="b-btn" id="main-panel-btn" data-plugin="__main__" title="主面板">主面板</button>
   </div>
   <div id="settings-mask">
     <div id="settings-box">
       <h3>设置</h3>
       <div id="s-menu">
-        <button class="s-menu-item active" data-menu="hotkey">快捷键</button>
-        <button class="s-menu-item" data-menu="apps">web 应用</button>
+        <button class="s-menu-item active" data-menu="apps">web 应用</button>
+        <button class="s-menu-item" data-menu="hotkey">快捷键</button>
         <button class="s-menu-item" data-menu="layout">布局</button>
+        <button class="s-menu-item" data-menu="general">通用</button>
       </div>
       <div id="s-body">
-        <div class="s-page" id="s-page-hotkey">
-          <label>总快捷键：呼出/隐藏覆盖层（点「设置」后按新组合，即时生效）</label>
+        <div class="s-page hidden" id="s-page-hotkey">
+          <label id="hk-label-main">总快捷键：呼出/隐藏覆盖层（点「设置」后按新组合，即时生效）</label>
           <div class="hk-row" id="main-hk-row">
             <span class="hk-name">总快捷键</span>
             <span class="hk-value" id="main-hk-value">…</span>
             <button class="btn hk-set" id="main-hk-btn">设置</button>
+            <button class="btn" id="main-hk-del">删除</button>
           </div>
-          <label>各 web 应用快捷键：按下直接切换到对应应用（点「设置」后按新组合，Esc 取消）</label>
+          <label id="hk-label-app">各 web 应用快捷键：按下直接切换到对应应用（点「设置」后按新组合，Esc 取消）。窗口激活时也可按 Alt+数字（1~9、0=第10个）按列表顺序快速切换</label>
           <div id="app-hk-list"></div>
           <div id="hotkey-err"></div>
         </div>
-        <div class="s-page hidden" id="s-page-apps">
-          <label>web 应用（输入 URL 添加；删除即时生效）</label>
+        <div class="s-page" id="s-page-apps">
+          <label>web 应用（输入 URL 添加；↑↓ 调整顺序；删除即时生效）</label>
           <div id="app-list"></div>
           <div class="p-add">
             <input id="p-url" placeholder="应用 URL（http(s):// 或 atray://localhost/…）" spellcheck="false">
@@ -240,6 +255,14 @@
           <label>菜单栏位置</label>
           <div id="bar-pos-group" class="pos-group"></div>
           <div class="hint">改动即时生效并记忆</div>
+        </div>
+        <div class="s-page hidden" id="s-page-general">
+          <label>启动</label>
+          <div class="opt-row">
+            <span class="opt-text">开机自动启动（登录 Windows 后后台托盘运行）</span>
+            <button class="btn" id="autostart-btn">…</button>
+          </div>
+          <div id="autostart-err"></div>
         </div>
       </div>
       <div class="s-row">
@@ -258,6 +281,9 @@ const atrayApi = (() => {
     setConfig: (cfg) => core.invoke('atray_set_config', { cfg }),
     getConfig: () => core.invoke('atray_get_config'),
     setHotkey: (keys) => core.invoke('atray_set_hotkey', { keys }),
+    clearHotkey: () => core.invoke('atray_clear_hotkey'),
+    getAutostart: () => core.invoke('atray_get_autostart'),
+    setAutostart: (enable) => core.invoke('atray_set_autostart', { enable }),
     hide: () => core.invoke('atray_hide'),
     quit: () => core.invoke('atray_quit'),
     onEvent: (cb) => { evt.listen('atray-event', (e) => cb(e.payload)); },
@@ -292,6 +318,8 @@ let pluginFrames = {};
 let appCfgs = [];        // web 应用列表 [{id, name, url, hotkey}]
 let activePlugin = null; // 当前激活应用 id（null = 主面板）
 let mainHotkey = 'Alt+Shift+A';
+let hkBackend = 'native'; // 'native'（Windows/X11 即时注册）| 'portal'（Wayland 系统对话框）
+let portalKeys = {};      // portal 绑定结果：{shortcut_id: 系统实际按键描述}
 
 function activatePlugin(id) {
   activePlugin = id;
@@ -335,6 +363,7 @@ function buildPluginUI() {
 
 atrayApi.onPluginActivate((id) => {
   if (!pluginFrames[id]) return;
+  if (settingsMask.style.display === 'flex') return; // 设置面板打开时不切换
   activatePlugin(id);
 });
 
@@ -357,6 +386,20 @@ atrayApi.onEvent((event) => {
   }
 });
 atrayApi.onMenu(() => { openSettings(); });
+
+// 窗口激活时 Alt+数字：按列表顺序直接切换 web 应用（1=第一个，9=第九个，0=第十个）。
+// 注意带 Shift/Ctrl 的组合（如 Alt+Shift+1 应用专属热键）不在此列。
+document.addEventListener('keydown', (e) => {
+  if (settingsMask.style.display === 'flex') return; // 设置面板打开时不抢键
+  if (!e.altKey || e.ctrlKey || e.shiftKey) return;
+  let idx;
+  if (e.key >= '1' && e.key <= '9') idx = +e.key - 1;
+  else if (e.key === '0') idx = 9;
+  else return;
+  if (idx >= appCfgs.length) return;
+  e.preventDefault();
+  activatePlugin(appCfgs[idx].id);
+});
 
 // ---------- 布局配置（localStorage 记忆；quit 与菜单栏不能同角） ----------
 const POS_LABEL = {tl: '左上', tr: '右上', bl: '左下', br: '右下'};
@@ -419,9 +462,9 @@ function renderLayoutPage() {
   });
 }
 
-// ---------- 设置面板（快捷键 / web 应用） ----------
+// ---------- 设置面板（web 应用 / 快捷键 / 布局 / 通用） ----------
 const settingsMask = document.getElementById('settings-mask');
-let settingsMode = 'hotkey';
+let settingsMode = 'apps';
 let capturing = null; // 正在捕获快捷键的目标：'main' 或 应用 id
 
 function switchMenu(menu) {
@@ -430,22 +473,59 @@ function switchMenu(menu) {
   document.querySelectorAll('#s-menu .s-menu-item').forEach((b) => {
     b.classList.toggle('active', b.dataset.menu === menu);
   });
-  document.getElementById('s-page-hotkey').classList.toggle('hidden', menu !== 'hotkey');
   document.getElementById('s-page-apps').classList.toggle('hidden', menu !== 'apps');
+  document.getElementById('s-page-hotkey').classList.toggle('hidden', menu !== 'hotkey');
   document.getElementById('s-page-layout').classList.toggle('hidden', menu !== 'layout');
-  if (menu === 'hotkey') renderHkList();
-  else if (menu === 'apps') renderAppList();
+  document.getElementById('s-page-general').classList.toggle('hidden', menu !== 'general');
+  if (menu === 'apps') renderAppList();
+  else if (menu === 'hotkey') { renderHkList(); refreshPortalKeys(); }
   else if (menu === 'layout') renderLayoutPage();
+  else if (menu === 'general') refreshAutostartBtn();
+}
+
+// portal 模式：绑定由系统对话框完成，打开快捷键页时拉取最新实际按键
+function refreshPortalKeys() {
+  if (hkBackend !== 'portal') return;
+  atrayApi.getConfig().then((r) => {
+    if (r.status === 'ok' && r.data.portal_keys && typeof r.data.portal_keys === 'object') {
+      portalKeys = r.data.portal_keys;
+      renderHkList();
+    }
+  });
 }
 
 function openSettings(menu) {
-  switchMenu(menu || 'hotkey');
+  switchMenu(menu || 'apps'); // 默认落在第一个菜单页（web 应用）
   settingsMask.style.display = 'flex';
 }
 function closeSettings() {
   cancelCapture();
   settingsMask.style.display = 'none';
 }
+
+// ---------- 通用页（开机自启） ----------
+const autostartBtn = document.getElementById('autostart-btn');
+function refreshAutostartBtn() {
+  atrayApi.getAutostart().then((r) => {
+    const on = r.status === 'ok' && !!r.data.enabled;
+    autostartBtn.textContent = on ? '已开启' : '已关闭';
+    autostartBtn.classList.toggle('on', on);
+  });
+}
+autostartBtn.onclick = () => {
+  const want = !autostartBtn.classList.contains('on');
+  atrayApi.setAutostart(want).then((r) => {
+    const err = document.getElementById('autostart-err');
+    if (r.status === 'ok') {
+      autostartBtn.textContent = want ? '已开启' : '已关闭';
+      autostartBtn.classList.toggle('on', want);
+      err.textContent = '';
+      showToast(want ? '已开启开机自动启动' : '已关闭开机自动启动');
+    } else {
+      err.textContent = String(r.data || '设置失败');
+    }
+  });
+};
 
 function normalizeHotkey(parts) {
   const mods = [];
@@ -457,9 +537,27 @@ function normalizeHotkey(parts) {
   return mods.concat(key).join('+');
 }
 
-// 快捷键页：总快捷键 + 各应用快捷键，全部可见可设
+// 快捷键页：总快捷键 + 各应用快捷键，全部可见可设/可删
+// portal 模式（Wayland）：实际按键以系统对话框绑定结果为准（portalKeys），
+// 未绑定/未确认时回落显示配置值
+function hkDisplay(id, cfgVal) {
+  if (hkBackend === 'portal') return portalKeys[id] || cfgVal || '';
+  return cfgVal || '';
+}
 function renderHkList() {
-  document.getElementById('main-hk-value').textContent = mainHotkey;
+  const mainValue = document.getElementById('main-hk-value');
+  const mainShown = hkDisplay('toggle', mainHotkey);
+  mainValue.textContent = mainShown || '（未设置）';
+  mainValue.classList.toggle('empty', !mainShown);
+  mainValue.title = (hkBackend === 'portal' && mainShown && mainShown !== mainHotkey)
+    ? '系统实际分配的按键（配置为 ' + (mainHotkey || '无') + '）' : '';
+  document.getElementById('main-hk-del').style.display = mainHotkey ? '' : 'none';
+  if (hkBackend === 'portal') {
+    document.getElementById('hk-label-main').textContent =
+      '总快捷键：呼出/隐藏覆盖层（Wayland 下点「设置」后弹出系统对话框确认/修改按键；也可到系统设置 → 快捷键 → atray 修改）';
+    document.getElementById('hk-label-app').textContent =
+      '各 web 应用快捷键：按下直接切换到对应应用（Wayland 下同样经系统对话框确认；Alt+数字 快速切换仅 Windows/X11 支持）';
+  }
   const list = document.getElementById('app-hk-list');
   list.innerHTML = '';
   if (!appCfgs.length) {
@@ -479,12 +577,25 @@ function renderHkList() {
     name.title = p.url;
     const value = document.createElement('span');
     value.className = 'hk-value' + (p.hotkey ? '' : ' empty');
-    value.textContent = p.hotkey || '（未设置）';
-    const btn = document.createElement('button');
-    btn.className = 'btn hk-set';
-    btn.textContent = '设置';
-    btn.onclick = () => startCapture(p.id);
-    row.append(name, value, btn);
+    value.textContent = hkDisplay('plugin:' + p.id, p.hotkey) || '（未设置）';
+    const setBtn = document.createElement('button');
+    setBtn.className = 'btn hk-set';
+    setBtn.textContent = '设置';
+    setBtn.onclick = () => startCapture(p.id);
+    row.append(name, value, setBtn);
+    if (p.hotkey) {
+      // 删除该应用快捷键（即时注销）
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn';
+      delBtn.textContent = '删除';
+      delBtn.onclick = () => {
+        p.hotkey = null;
+        saveApps(false);
+        renderHkList();
+        showToast('已删除「' + (p.name || p.id) + '」快捷键');
+      };
+      row.appendChild(delBtn);
+    }
     list.appendChild(row);
   }
 }
@@ -529,8 +640,9 @@ document.addEventListener('keydown', (e) => {
     atrayApi.setHotkey(combo).then((r) => {
       if (r.status === 'ok') {
         mainHotkey = combo;
-        document.getElementById('main-hk-value').textContent = combo;
-        showToast('总快捷键：' + combo);
+        renderHkList();
+        if (hkBackend === 'portal') showToast('请在弹出的系统对话框中确认按键');
+        else showToast('总快捷键：' + combo);
       } else {
         document.getElementById('hotkey-err').textContent = String(r.data || '设置失败');
       }
@@ -542,12 +654,24 @@ document.addEventListener('keydown', (e) => {
       p.hotkey = combo;
       saveApps(false);
       renderHkList();
-      showToast('「' + (p.name || p.id) + '」快捷键：' + combo);
+      if (hkBackend === 'portal') showToast('「' + (p.name || p.id) + '」已保存，请在系统对话框中确认按键');
+      else showToast('「' + (p.name || p.id) + '」快捷键：' + combo);
     }
   }
 });
 
 // ---------- web 应用管理页 ----------
+function moveApp(from, dir) {
+  const to = from + dir;
+  if (to < 0 || to >= appCfgs.length) return;
+  const arr = appCfgs.slice();
+  const t = arr.splice(from, 1)[0];
+  arr.splice(to, 0, t);
+  appCfgs = arr;
+  saveApps(true); // 顺序整体持久化（工具栏/启动激活跟随新顺序）
+  renderAppList();
+}
+
 function renderAppList() {
   const list = document.getElementById('app-list');
   list.innerHTML = '';
@@ -558,7 +682,7 @@ function renderAppList() {
     list.appendChild(empty);
     return;
   }
-  for (const p of appCfgs) {
+  appCfgs.forEach((p, i) => {
     const row = document.createElement('div');
     row.className = 'app-row';
     const name = document.createElement('span');
@@ -571,18 +695,32 @@ function renderAppList() {
     const hot = document.createElement('span');
     hot.className = 'a-hot';
     hot.textContent = p.hotkey || '';
+    const upBtn = document.createElement('button');
+    upBtn.className = 'btn mv';
+    upBtn.textContent = '↑';
+    upBtn.title = '上移';
+    upBtn.disabled = i === 0;
+    upBtn.onclick = () => moveApp(i, -1);
+    const downBtn = document.createElement('button');
+    downBtn.className = 'btn mv';
+    downBtn.textContent = '↓';
+    downBtn.title = '下移';
+    downBtn.disabled = i === appCfgs.length - 1;
+    downBtn.onclick = () => moveApp(i, 1);
     const delBtn = document.createElement('button');
     delBtn.className = 'btn';
     delBtn.textContent = '删除';
     delBtn.onclick = () => {
       if (!confirm('删除 web 应用「' + (p.name || p.id) + '」？')) return;
+      const wasActive = activePlugin === p.id;
       appCfgs = appCfgs.filter((x) => x.id !== p.id);
       saveApps(true);
+      if (wasActive) activatePlugin(null); // 删的是当前激活应用 → 回主面板
       renderHkList();
     };
-    row.append(name, url, hot, delBtn);
+    row.append(name, url, hot, upBtn, downBtn, delBtn);
     list.appendChild(row);
-  }
+  });
 }
 
 // 保存应用列表（即时生效）；rebuild 决定是否重建界面
@@ -620,6 +758,17 @@ document.querySelectorAll('#s-menu .s-menu-item').forEach((b) => {
   b.onclick = () => switchMenu(b.dataset.menu);
 });
 document.getElementById('main-hk-btn').onclick = () => startCapture('main');
+document.getElementById('main-hk-del').onclick = () => {
+  atrayApi.clearHotkey().then((r) => {
+    if (r.status === 'ok') {
+      mainHotkey = null;
+      renderHkList();
+      showToast('总快捷键已删除（托盘仍可呼出）');
+    } else {
+      document.getElementById('hotkey-err').textContent = String(r.data || '删除失败');
+    }
+  });
+};
 document.getElementById('s-ok').onclick = closeSettings;
 document.getElementById('settings-btn').onclick = () => { openSettings(); };
 document.getElementById('main-panel-btn').onclick = () => activatePlugin(null);
@@ -635,8 +784,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     const r = await atrayApi.getConfig();
     if (r.status === 'ok') {
-      if (r.data.hotkey) mainHotkey = r.data.hotkey;
+      if (typeof r.data.hotkey === 'string') mainHotkey = r.data.hotkey;
+      else mainHotkey = null;
       if (r.data.plugins) appCfgs = r.data.plugins;
+      if (r.data.backend) hkBackend = r.data.backend;
+      if (r.data.portal_keys && typeof r.data.portal_keys === 'object') portalKeys = r.data.portal_keys;
     }
   } catch (e) {}
   buildPluginUI();

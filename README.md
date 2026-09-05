@@ -55,6 +55,27 @@
 | 查看全部快捷键 | ⚙ 设置 → 快捷键页 |
 | 调整按钮/菜单栏位置 | ⚙ 设置 → 布局 |
 
+## 平台支持
+
+| 平台 | 全屏覆盖层 | 全局热键 |
+|---|---|---|
+| Windows | 透明 + 原生全屏（WebView2） | tauri global-shortcut（native） |
+| Linux X11 | 透明 + 全屏 | tauri global-shortcut（native） |
+| Linux Wayland（KDE/GNOME/Hyprland） | 全屏（页面自带深色背景，无需窗口透明） | **XDG GlobalShortcuts portal**（跨桌面标准） |
+
+### Wayland 热键说明（portal 后端）
+
+- 探测：Wayland 会话自动启用 `portal` 后端（[ashpd](https://crates.io/crates/ashpd)
+  实现 `org.freedesktop.portal.GlobalShortcuts`）；X11/Windows 走 native 注册
+- 首次绑定弹**系统对话框**（由桌面提供）确认/修改按键；此后绑定持久化，重启不弹窗
+- 配置变更（设置页改键/增删应用）→ 重绑（再次弹系统框）
+- 设置页显示系统实际分配的按键（`portal_keys` 回填）；「Alt+数字 序号切换」为
+  Windows/X11 功能，Wayland 下不注册
+- **KDE 注意**：Debian 13 的 `xdg-desktop-portal-kde` 6.3.5 缺对话框 QML
+  （上游发布缺陷，6.7+ 修复），需先跑 `scripts/fix-kde-portal-qml.sh`（补 ki18n
+  qmldir + portal 对话框 QML，幂等）。否则绑定框弹不出、请求挂起
+- 启动时自动清理历史异常退出残留的同应用快捷键（防 KGlobalAccel 冲突堆积）
+
 ## 技术
 
 - **Tauri v2**：Rust 后端 + 纯 HTML 前端单文件（`renderer/index.html`），零构建
@@ -81,8 +102,10 @@ cargo build --release --target x86_64-pc-windows-gnu    # Windows 交叉编译
 ```bash
 bash deploy.sh           # Windows：exe + dll + renderer → C:\Users\<user>\atray\ + 桌面副本
 bash deploy-front.sh     # 只推前端（零编译迭代）
-bash deploy-linux.sh     # Linux 目标（~/atray/，DISPLAY=:0 启动）
+bash deploy-linux.sh     # Linux 目标（~/atray/，自动探测 Wayland/X11 会话启动）
 ```
+
+> Debian/KDE 首次部署：先 `sudo bash scripts/fix-kde-portal-qml.sh`（见平台支持节）。
 
 ## 与 anm 的关系
 
@@ -93,6 +116,9 @@ bash deploy-linux.sh     # Linux 目标（~/atray/，DISPLAY=:0 启动）
 
 ## 版本历史
 
+- **v1.1.0**（2026-09-06）：Linux Wayland 支持——XDG GlobalShortcuts portal 热键后端
+  （ashpd，跨 KDE/GNOME/Hyprland）+ 显式全屏 + 历史残留快捷键清理；
+  新增 `scripts/fix-kde-portal-qml.sh`（Debian 13 portal-kde 对话框缺陷修复）
 - **v1.0.0**（2026-09-04）：从 anm-tauri 分出独立项目；术语「web 应用」；设置 v2
   （快捷键集中可见/即时生效/单按钮）；布局配置（隐藏按钮四角 + 菜单栏位置，互斥同角）；
   贴角圆角收敛（仅朝中心角圆角）；专属图标；右上角 ✕ 隐藏按钮；文档完善
