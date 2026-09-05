@@ -56,11 +56,17 @@ async fn cleanup_stale_atray(conn: &zbus::Connection) {
         .await
     {
         Ok(m) => m,
-        Err(_) => return,
+        Err(e) => {
+            eprintln!("atray: cleanup allComponents 调用失败: {e}");
+            return;
+        }
     };
     let comps: Vec<OwnedObjectPath> = match msg.body().deserialize() {
         Ok(v) => v,
-        Err(_) => return,
+        Err(e) => {
+            eprintln!("atray: cleanup allComponents 反序列化失败: {e}");
+            return;
+        }
     };
     for comp in comps {
         let name = match comp.as_str().rsplit('/').next() {
@@ -81,15 +87,17 @@ async fn cleanup_stale_atray(conn: &zbus::Connection) {
             Ok(m) => m,
             Err(_) => continue,
         };
-        let infos: Result<
-            Vec<(String, String, String, String, String, String, Vec<Vec<i32>>)>,
-            _,
-        > = msg.body().deserialize();
+        // 签名 a(ssssssaiai)：struct = 6 字符串 + ai + ai（键序列组与标志/键码）
+        let infos: Result<Vec<(String, String, String, String, String, String, Vec<i32>, Vec<i32>)>, _> =
+            msg.body().deserialize();
         let mine = match infos {
             Ok(list) => list
                 .iter()
-                .any(|(_, friendly, _, _, _, _, _)| friendly.contains("atray 覆盖层")),
-            Err(_) => false,
+                .any(|(_, friendly, _, _, _, _, _, _)| friendly.contains("atray 覆盖层")),
+            Err(e) => {
+                eprintln!("atray: cleanup {name} allShortcutInfos 反序列化失败: {e}");
+                false
+            }
         };
         if !mine {
             continue;

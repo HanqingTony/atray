@@ -32,14 +32,22 @@ timeout 60 ssh "$HOST" "
   rm -rf $DEST/renderer
   cp -r /tmp/atray-renderer $DEST/renderer
   chmod +x $DEST/atray
-  # 在用户的图形会话里启动（探测 session 环境；Wayland 优先）
+  # 在用户的图形会话里启动（继承其 Wayland/DBus/X11 环境）
   UID_N=\$(id -u)
   export XDG_RUNTIME_DIR=/run/user/\$UID_N
   export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$UID_N/bus
   if [ -e /run/user/\$UID_N/wayland-0 ]; then
     export WAYLAND_DISPLAY=wayland-0
-    export GDK_BACKEND=wayland
   fi
+  # X11(GDK)环境:从图形会话进程继承 DISPLAY/XAUTHORITY(atray 强制 X11 后端)
+  for p in plasmashell kwin_wayland gnome-shell; do
+    pid=\$(pgrep -x \$p 2>/dev/null | head -1)
+    if [ -n \"\$pid\" ]; then
+      eval \"\$(tr '\0' '\n' < /proc/\$pid/environ 2>/dev/null | grep -E '^(DISPLAY|XAUTHORITY)=')\"
+      export DISPLAY XAUTHORITY
+      [ -n \"\${DISPLAY:-}\" ] && break
+    fi
+  done
   setsid nohup $DEST/atray > /tmp/atray-run.log 2>&1 < /dev/null & disown
   sleep 6
   pgrep -x atray > /dev/null && echo 'atray 运行中' || { echo '启动失败，日志:'; tail -8 /tmp/atray-run.log; }

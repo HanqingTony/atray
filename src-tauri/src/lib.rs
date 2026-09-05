@@ -445,6 +445,11 @@ fn sync_alt_shortcuts(app: &tauri::AppHandle, plugins: &[PluginCfg]) {
 fn show_main(win: &tauri::WebviewWindow) {
     let _ = win.show();
     let _ = win.set_focus();
+    // Wayland：窗口 hide 后重新 show，KWin 可能已退出全屏状态——每次呼出恢复全屏
+    #[cfg(target_os = "linux")]
+    {
+        let _ = win.set_fullscreen(true);
+    }
     let _ = win.emit("atray-event", "shown");
 }
 fn hide_main(win: &tauri::WebviewWindow) {
@@ -457,6 +462,15 @@ fn hide_main(win: &tauri::WebviewWindow) {
 // ---------------------------------------------------------------------------
 
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    {
+        // 强制 X11(GDK)后端:实测 tao/WebKitGTK 的 Wayland fullscreen 有几何 bug
+        // (GTK 状态置 fullscreen 但 KWin 不给全屏尺寸,窗口保持 ~46% 大小;
+        // 原生 GTK 测试正常 → 问题在 tao 层)。XWayland 下 X11 全屏可靠:
+        // WebKitGTK 渲染、托盘、portal 全局热键(与窗口平台无关)均不受影响。
+        // 注:tao 修复后可移除本行改回 Wayland 原生。
+        std::env::set_var("GDK_BACKEND", "x11");
+    }
     let single_instance = tauri_plugin_single_instance::init(|app, _args, _cwd| {
         if let Some(win) = app.get_webview_window("main") {
             let _ = win.show();
@@ -552,8 +566,26 @@ pub fn run() {
                         let _ = win.navigate(url);
                     }
                 }
-                // WebKitGTK/Wayland：显式补一次全屏（conf 的 fullscreen 偶发不生效）
-                let _ = win.set_fullscreen(true);
+                // WebKitGTK/Wayland：全屏需等窗口 map 后才生效（创建期调用会丢）——
+                // 延迟到窗口呈现后补一次；此后每次 show 也恢复全屏（见 show_main）
+                #[cfg(target_os = "linux")]
+                {
+                    let w = win.clone();
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+                        let r = w.set_fullscreen(true);
+                        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+                        let fs = w.is_fullscreen().unwrap_or(false);
+                        let sz = w.outer_size().map(|s| format!("{s:?}")).unwrap_or_default();
+                        let m = match w.current_monitor() {
+                            Ok(Some(m)) => format!("{:?}", m.size()),
+                            _ => "?".to_string(),
+                        };
+                        if !fs || sz != m {
+                            eprintln!("atray: 全屏异常 set_fullscreen={r:?} is_fullscreen={fs} outer={sz} monitor={m}");
+                        }
+                    });
+                }
             }
 
             // 热键后端选择：Linux Wayland 会话 → portal（XDG Desktop Portal
