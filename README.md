@@ -2,7 +2,8 @@
 
 **WebUI 薄壳**：把任意 web 应用嵌进全屏覆盖层，用快捷键在应用间快速切换。
 
-> **v1.0.0**（2026-09）：功能稳定版。
+> **v1.2.0**（2026-09-06）：Linux Wayland 热键全链路打通（KGA SetPresent 根因修复 +
+> KGA 对账 v2），Windows 功能集（快捷键删除/排序/开机自启/Alt+数字）已稳定。
 > 从 anotemanager 的 anm-tauri 薄壳分出：**不含任何笔记/服务器概念**（与 anm-core 无关），
 > 专门用于连接 webui（ComfyUI、各类面板、本地服务等）。
 
@@ -23,7 +24,7 @@
 
 ### 快捷键体系
 
-- **总快捷键**（默认 `Alt+Shift+A`，与 anm 的 Alt+Shift+Z 错开可同机并存）：呼出/隐藏覆盖层
+- **总快捷键**（默认 `Alt+Shift+Z`）：呼出/隐藏覆盖层
 - **每个 web 应用独立快捷键**（如 `Alt+Shift+1`）：任意时刻按下直接切到对应应用（窗口自动呼出）
 - 热键被占用时**降级运行**（托盘仍可呼出），不崩溃
 - 设置 → 快捷键页：总 + 每个应用快捷键**集中可见可设**，按下组合**即时生效**（Esc 取消）
@@ -47,7 +48,7 @@
 
 | 操作 | 方式 |
 |---|---|
-| 呼出/隐藏 | 总快捷键（Alt+Shift+A）或托盘「显示」 |
+| 呼出/隐藏 | 总快捷键（Alt+Shift+Z）或托盘「显示」 |
 | 隐藏（不退出） | 右上角 ✕ |
 | 真退出 | 托盘右键 → 退出 |
 | 添加 web 应用 | 空态「＋ 添加web应用」按钮 / ⚙ 设置 → web 应用 |
@@ -116,9 +117,21 @@ bash deploy-linux.sh     # Linux 目标（~/atray/，自动探测 Wayland/X11 �
 
 ## 版本历史
 
+- **v1.2.0**（2026-09-06）：Linux Wayland 热键全链路打通——根因修复：KGA
+  `setShortcut` 必须带 `SetPresent|NoAutoloading`（0x6），缺 SetPresent 动作不
+  抓键（按键无信号；`Component.isActive()`=false 可诊断），物理按键呼出/隐藏
+  实测通过；KGA 同步重构为 desired-state 对账 v2（config.json 唯一期望态，
+  启动/IPC/漂移 watchdog 三触发点共用 reconcile_all，系统设置改键等外部偏离
+  ≤20s 自动还原；watchdog 内容比较防自触发）；完整定位过程与诊断命令见
+  `STATUS-linux-wayland.md`。另含 Windows 功能集：快捷键删除、web 应用排序、
+  开机自启（通用页）、Alt+数字窗口内快速切换
 - **v1.1.0**（2026-09-06）：Linux Wayland 支持——XDG GlobalShortcuts portal 热键后端
   （ashpd，跨 KDE/GNOME/Hyprland）+ 显式全屏 + 历史残留快捷键清理；
   新增 `scripts/fix-kde-portal-qml.sh`（Debian 13 portal-kde 对话框缺陷修复）
 - **v1.0.0**（2026-09-04）：从 anm-tauri 分出独立项目；术语「web 应用」；设置 v2
   （快捷键集中可见/即时生效/单按钮）；布局配置（隐藏按钮四角 + 菜单栏位置，互斥同角）；
   贴角圆角收敛（仅朝中心角圆角）；专属图标；右上角 ✕ 隐藏按钮；文档完善
+
+## 路线图
+
+未来规划（v1.x 打磨清单 / v2.0.0 场景功能）见 [ROADMAP.md](ROADMAP.md)。

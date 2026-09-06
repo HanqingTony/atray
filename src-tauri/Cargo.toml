@@ -1,6 +1,6 @@
 [package]
 name = "atray"
-version = "1.0.0"
+version = "1.2.0"
 description = "atray：WebUI 薄壳（全屏覆盖层 + 插件 + 快捷键）"
 edition = "2021"
 

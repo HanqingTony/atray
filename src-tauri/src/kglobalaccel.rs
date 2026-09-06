@@ -41,6 +41,7 @@
 // 直接返回已存键（表现：gdbus 调用返回 [0] 且键没设上）。真改键必须
 // NoAutoloading。另：busctl 调 setShortcut 报 "Too many parameters"（busctl
 // 数组参数解析问题），用 gdbus 正常；Rust zbus 直接 call_method 正常。
+// ⚠ 但只带 0x4 会漏 SetPresent（坑 10，按键不触发）——设键一律用 0x6。
 //
 // ### 坑 7：键编码 = Qt QKeySequence int（mods | keycode）
 // Alt+Shift+A = 0x0A000041 = 167772225。修饰位 Shift=0x02000000 Ctrl=0x04000000
@@ -58,28 +59,34 @@
 // - MatchRule::builder() 的 sender/interface/member/path 返回 Result，需 ?/and_then
 // - MessageStream::from(&conn) 不加规则收不到广播信号
 //
-// ### 未解决（交接给接手者）
-// 组件注册/键设置/持久化/幂等全部验证通过，但**按快捷键不触发**（globalShortcutPressed
-// 信号没到 atray 或没分发）。排查方向：
-// 1. KWin 的 kglobalaccel 集成是否真的抓键并 emit（用 gdbus monitor 或 dbus-monitor
-//    盯 /component/atray 的 globalShortcutPressed 信号,物理按键时观察）
-// 2. Component 接口的 isActive 属性/需要调用 org.kde.kglobalaccel.Component 的
-//    某些激活方法（KGlobalAccel 框架客户端在 kglobalacceld 侧有专用通道,
-//    纯 D-Bus 第三方可能漏了 kglobalacceld 要求的状态机,如 GlobalShortcutsRegistry
-//    的 grab 机制只在组件"present"时工作）
-// 3. 备选:验证 portal 通道在**正常发行版**(非 Debian 打包缺陷)可用后,
-//    以 portal 为主 + KGA 为 KDE 增强
-// 4. 或检查 KWin 日志(org.kde.kglobalaccel debug)看按键是否被识别
+// ### 坑 10：setShortcut 的 flags 必须带 SetPresent(0x2)！——2026-09 按键不触发根因
+// 只传 NoAutoloading(0x4) 时键能存进配置，但动作不被标记 present；
+// GlobalShortcut::setActive() 抓键前置条件是 _isPresent，不 present → 键不进
+// registry 的 _active_keys → 按键永远匹配不到 → globalShortcutPressed 不发。
+// 表现：注册/设键/持久化全通、订阅也在，就是按了没反应；Component::isActive()=false
+// 是可靠诊断信号。真实 KDE 框架客户端都带 SetPresent，第三方直连最容易漏。
+// 修法：flags = SetPresent | NoAutoloading = 0x6（FLAG_SET_KEY）。
 //
-// ## 设计（幂等语义）
-//   - 固定组件 atray → kglobalshortcutsrc [atray] 段,系统设置里一个条目
-//   - 启动同步宽松:动作已有键(用户/系统设置改过)→ 保留;无键 → 填默认
-//   - IPC 改键 → 强制 setShortcut(NoAutoloading),即时生效
-//   - 启动先清理历史 portal 残留(token_ashpd_* 带 atray 动作描述),一次性迁移
+// ### 未解决（历史交接记录，已定位根因见坑 10）
+// 按键不触发问题的排查过程：见 git 交接存档 15cc67c 与 STATUS-linux-wayland.md；
+// dbus-monitor 验证、kglobalacceld 源码（globalshortcut.cpp setActive /
+// kglobalacceld.cpp setShortcutKeys）定位到 present 旗标缺失，0x6 修复。
+//
+// ## 设计 v2（desired-state 对账，2026-09 决策：应用配置为唯一改键入口）
+//   - 固定组件 atray → kglobalshortcutsrc [atray] 段，系统设置里一个条目
+//   - config.json = 期望态。启动/每次 IPC 变更/周期性 watchdog 都跑同一个
+//     reconcile_all()：读系统实际 → 与期望 diff → 最小写操作收敛。
+//     相同 → 零 D-Bus 写；不同 → 改回配置值；多余动作 → 注销。
+//   - 无「宽松/强制」两态：系统侧任何偏离（用户去系统设置改键等）都会在对账时
+//     被还原。理由：KDE 的 kglobalshortcutsrc 只是全局热键的强制承载，产品上不
+//     鼓励用户在系统设置里改 atray 动作——改键请用 atray 设置页（两边唯一入口）。
+//   - 启动先清理历史 portal 残留(token_ashpd_* 带 atray 动作描述)，一次性迁移
 
 #![cfg(target_os = "linux")]
 
 use ashpd::zbus;
+use std::path::PathBuf;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::watch;
 
@@ -99,6 +106,13 @@ const MOD_ALT: i32 = 0x0800_0000;
 const MOD_META: i32 = 0x1000_0000;
 const KEY_F1: i32 = 0x0100_0030;
 
+// kglobalacceld setShortcut flags（KGlobalAccelD::SetShortcutFlag，见 daemon 头文件）
+const FLAG_SET_PRESENT: u32 = 0x2;    // 标记动作「在场」——抓键的前提！
+const FLAG_NO_AUTOLOADING: u32 = 0x4; // 真改键：否则 daemon 按已存设置 autoload，忽略新键
+/// 设键必须同时带两个旗标：仅 NoAutoloading 能存键但动作不 present → 键不被抓取
+/// → 按键无信号（Component::isActive()=false，本 bug 即 2026-09 卡点根因）。
+const FLAG_SET_KEY: u32 = FLAG_SET_PRESENT | FLAG_NO_AUTOLOADING;
+
 /// org.kde.kglobalaccel 服务是否可用（KDE 桌面）。
 pub fn available() -> bool {
     // 同步探测走 session bus 代价高；这里用环境近似 + 启动后异步确认。
@@ -108,16 +122,20 @@ pub fn available() -> bool {
         .unwrap_or(false)
 }
 
-/// 启动 KGA 热键后端（async 任务：注册 + 信号监听 + 变更重同步）。
+/// 启动 KGA 热键后端（async 任务：对账循环 + 信号监听 + 漂移 watchdog）。
 pub fn spawn(app: AppHandle) -> watch::Sender<bool> {
     let (tx, rx) = watch::channel(false);
-    tauri::async_runtime::spawn(kga_loop(app.clone(), rx));
+    tauri::async_runtime::spawn(kga_loop(rx));
     tauri::async_runtime::spawn(signal_listener(app));
+    tauri::async_runtime::spawn(watchdog());
     tx
 }
 
-/// 主循环：启动同步（幂等）→ 等待变更通知 → 重同步。
-async fn kga_loop(app: AppHandle, mut rx: watch::Receiver<bool>) {
+/// 主循环：启动（清理历史 portal 残留 → 首次对账）→ 等待变更通知 → 重新对账。
+///
+/// 每个触发点走同一个 reconcile_all()，无「首次宽松/后续强制」两态：
+/// 对账幂等（实际已 == 期望时零 D-Bus 写），多触发几次也只是空转。
+async fn kga_loop(mut rx: watch::Receiver<bool>) {
     let conn = match zbus::Connection::session().await {
         Ok(c) => c,
         Err(e) => {
@@ -125,102 +143,71 @@ async fn kga_loop(app: AppHandle, mut rx: watch::Receiver<bool>) {
             return;
         }
     };
-    let mut first = true;
+    // 一次性迁移:清理历史 portal 后端残留组件(token_ashpd_* 带 atray 动作)
+    crate::portal::cleanup_stale_atray(&conn).await;
     loop {
-        let cfg = load_effective_config();
-        if first {
-            // 一次性迁移:清理历史 portal 后端残留组件(token_ashpd_* 带 atray 动作)
-            crate::portal::cleanup_stale_atray(&conn).await;
+        if let Err(e) = reconcile_all(&conn, &load_effective_config()).await {
+            eprintln!("atray: KGlobalAccel 对账失败: {e}");
         }
-        // 首轮宽松（动作已有键则保留——用户/系统设置改过的键不覆盖）；
-        // 此后 notify（IPC 改键/增删插件）→ 强制以配置为准
-        if let Err(e) = sync_all(&conn, &cfg, !first).await {
-            eprintln!("atray: KGlobalAccel 同步失败: {e}");
-        }
-        first = false;
         let _ = rx.changed().await;
     }
 }
 
-/// 同步动作注册与按键。
-/// `force` = true 表示用户显式改键（IPC），按键以配置为准覆盖；
-/// false = 启动/配置变更后的宽松同步：动作已有键则保留（用户/系统设置改过）。
-async fn sync_all(conn: &zbus::Connection, cfg: &TrayConfig, force: bool) -> zbus::Result<()> {
-    // 1) 总快捷键 toggle
-    let toggle_key = cfg.hotkey.as_deref().and_then(to_qt_keys);
-    match (&cfg.hotkey, toggle_key) {
-        (Some(_), Some(keys)) => {
-            ensure_action(conn, "toggle", "呼出/隐藏 atray 覆盖层", &keys, force).await?;
-        }
-        _ => {
-            // 未配置总快捷键：注销动作（若有）
-            let _ = unregister_action(conn, "toggle").await;
-        }
+/// 对账：系统实际状态收敛到配置（期望态 = config.json，应用内设置为唯一改键入口）。
+///
+/// 1) 期望动作：缺则 doRegister（幂等，不重复建组件）；随后**无条件**
+///    setShortcut(keys, SetPresent|NoAutoloading)——present 状态没有读接口，
+///    且历史 0x4 注册的动作 present=false，只能靠每次设键顺带修复。
+///    写操作仅发生在：启动、IPC 变更、外部改键（watchdog 触发）——低频可接受。
+/// 2) 多余动作（配置里已删除/无热键）→ unregister。
+async fn reconcile_all(conn: &zbus::Connection, cfg: &TrayConfig) -> zbus::Result<()> {
+    let want = desired_actions(cfg);
+    // 实际已注册的动作名（shortcutNames 全量）
+    let names: Vec<String> = call(
+        conn,
+        &format!("/component/{COMPONENT}"),
+        IFACE_COMPONENT,
+        "shortcutNames",
+        &(),
+    )
+    .await?;
+    // 1) 注册并对齐键（含 present 标记——抓键前提）
+    for (act, desc, keys) in &want {
+        let action_id = action_id_of(act, desc);
+        // doRegister：已存在则更新友好名，不新增（幂等核心）
+        let _: () = call(conn, PATH_DAEMON, IFACE_DAEMON, "doRegister", &action_id).await?;
+        let _: Vec<i32> = call(
+            conn,
+            PATH_DAEMON,
+            IFACE_DAEMON,
+            "setShortcut",
+            &(action_id, keys.clone(), FLAG_SET_KEY),
+        )
+        .await?;
     }
-    // 2) 插件快捷键 plugin:<id>
-    let mut want: Vec<(String, String, Vec<i32>)> = Vec::new(); // (id, 描述, 键)
-    for p in &cfg.plugins {
-        if let Some(hk) = &p.hotkey {
-            if let Some(keys) = to_qt_keys(hk) {
-                let name = if p.name.is_empty() { p.id.clone() } else { p.name.clone() };
-                want.push((p.id.clone(), format!("切换到 {name}"), keys));
-            }
-        }
-    }
-    let current = list_actions(conn).await?;
-    // 注销已不存在的动作
-    for (act, _desc) in &current {
-        if act == "toggle" {
+    // 2) 注销多余动作
+    for act in &names {
+        if want.iter().any(|(a, _, _)| a == act) {
             continue;
         }
-        if let Some(pid) = act.strip_prefix("plugin:") {
-            if !want.iter().any(|(id, _, _)| id == pid) {
-                let _ = unregister_action(conn, act).await;
-            }
-        }
-    }
-    for (id, desc, keys) in want {
-        ensure_action(conn, &format!("plugin:{id}"), &desc, &keys, force).await?;
+        unregister_action(conn, act).await?;
     }
     Ok(())
 }
 
-/// 确保动作存在且有键：注册（幂等）→ 宽松模式：无键才填；强制模式：覆盖。
-async fn ensure_action(
-    conn: &zbus::Connection,
-    action: &str,
-    desc: &str,
-    keys: &[i32],
-    force: bool,
-) -> zbus::Result<()> {
-    let action_id = action_id_of(action, desc);
-    // doRegister：已存在则更新友好名，不新增（幂等核心）
-    let _: () = call(conn, PATH_DAEMON, IFACE_DAEMON, "doRegister", &action_id).await?;
-    const NO_AUTOLOADING: u32 = 0x4; // 真改键:否则 daemon 按已存设置 autoload,忽略新键
-    if force {
-        let _: Vec<i32> = call(
-            conn,
-            PATH_DAEMON,
-            IFACE_DAEMON,
-            "setShortcut",
-            &(action_id, keys.to_vec(), NO_AUTOLOADING),
-        )
-        .await?;
-        return Ok(());
+/// 期望动作表：(动作名, 描述, Qt 键编码)。配置里没有/无法表达的快捷键不产生期望。
+fn desired_actions(cfg: &TrayConfig) -> Vec<(String, String, Vec<i32>)> {
+    let mut want: Vec<(String, String, Vec<i32>)> = Vec::new();
+    if let Some(hk) = cfg.hotkey.as_deref().and_then(to_qt_keys) {
+        want.push(("toggle".into(), "呼出/隐藏 atray 覆盖层".into(), hk));
     }
-    // 宽松：读当前键，有则保留（用户/系统设置改过的键不覆盖）
-    let cur: Vec<i32> = call(conn, PATH_DAEMON, IFACE_DAEMON, "shortcut", &action_id).await?;
-    if cur.is_empty() {
-        let _: Vec<i32> = call(
-            conn,
-            PATH_DAEMON,
-            IFACE_DAEMON,
-            "setShortcut",
-            &(action_id, keys.to_vec(), NO_AUTOLOADING),
-        )
-        .await?;
+    for p in &cfg.plugins {
+        if let Some(hk) = p.hotkey.as_deref().and_then(to_qt_keys) {
+            let name = if p.name.is_empty() { p.id.clone() } else { p.name.clone() };
+            want.push((format!("plugin:{}", p.id), format!("切换到 {name}"), hk));
+        }
     }
-    Ok(())
+    want
 }
 
 async fn unregister_action(conn: &zbus::Connection, action: &str) -> zbus::Result<()> {
@@ -235,17 +222,44 @@ async fn unregister_action(conn: &zbus::Connection, action: &str) -> zbus::Resul
     Ok(())
 }
 
-/// 当前组件动作名列表（不含已清空键的残留? shortcutNames 全量）。
-async fn list_actions(conn: &zbus::Connection) -> zbus::Result<Vec<(String, String)>> {
-    let names: Vec<String> = call(
-        conn,
-        &format!("/component/{COMPONENT}"),
-        IFACE_COMPONENT,
-        "shortcutNames",
-        &(),
-    )
-    .await?;
-    Ok(names.into_iter().map(|n| (n, String::new())).collect())
+/// 漂移 watchdog：周期读 kglobalshortcutsrc，内容变化（用户系统设置改键等）
+/// → 重新对账还原。**内容比较**而非 mtime：本端 setShortcut 也会重写该文件，
+/// 但写出的内容与期望一致——内容相同即跳过，天然免疫自触发循环与 daemon
+/// 写回延迟（KConfig 经临时文件原子替换，读到的一定是完整新/旧内容）。
+async fn watchdog() {
+    let path = match rc_path() {
+        Some(p) => p,
+        None => {
+            eprintln!("atray: 找不到 kglobalshortcutsrc 路径，watchdog 停用");
+            return;
+        }
+    };
+    let conn = match zbus::Connection::session().await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("atray: watchdog D-Bus 连接失败: {e}");
+            return;
+        }
+    };
+    let mut seen: Option<String> = None;
+    loop {
+        tokio::time::sleep(Duration::from_secs(20)).await;
+        let content = std::fs::read_to_string(&path).ok();
+        if content == seen {
+            continue;
+        }
+        if let Err(e) = reconcile_all(&conn, &load_effective_config()).await {
+            eprintln!("atray: watchdog 对账失败: {e}");
+        }
+        seen = std::fs::read_to_string(&path).ok();
+    }
+}
+
+fn rc_path() -> Option<PathBuf> {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
+    Some(base.join("kglobalshortcutsrc"))
 }
 
 /// 4 元素 actionId：[组件, 动作, 组件友好名, 动作友好名]

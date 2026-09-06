@@ -96,29 +96,41 @@ struct AppState {
     alt_shortcuts: Mutex<Vec<tauri_plugin_global_shortcut::Shortcut>>,
     /// 热键后端（setup 时确定）
     backend: Mutex<Backend>,
-    /// portal 后端配置变更通知（Some = 已启动 portal 后端）
+    /// portal/KGA 后端配置变更通知（Some = 已启动后端；仅 Linux 存在，
+    /// Windows/X11 用占位类型保证跨平台编译）
+    #[cfg(target_os = "linux")]
     portal_notify: Mutex<Option<tokio::sync::watch::Sender<bool>>>,
+    #[cfg(not(target_os = "linux"))]
+    #[allow(dead_code)] // 占位：Windows/X11 编译用（portal 通知仅在 Linux 读写）
+    portal_notify: Mutex<Option<()>>,
     /// portal 绑定结果：系统实际分配的 (shortcut_id, trigger_description)，
     /// 供前端显示（native 后端为空）。
     portal_keys: Mutex<Vec<(String, String)>>,
 }
 
-/// 配置变更后通知 portal 后端重绑（native 后端为空操作）。
+/// 配置变更后通知 portal/KGA 后端重绑（native 后端为空操作）。
 fn notify_portal(app: &tauri::AppHandle) {
-    let Some(state) = app.try_state::<AppState>() else {
-        return;
-    };
-    let guard = state.portal_notify.lock().unwrap();
-    if let Some(tx) = guard.as_ref() {
-        let _ = tx.send(true);
+    #[cfg(target_os = "linux")]
+    {
+        let Some(state) = app.try_state::<AppState>() else {
+            return;
+        };
+        let guard = state.portal_notify.lock().unwrap();
+        if let Some(tx) = guard.as_ref() {
+            let _ = tx.send(true);
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = app; // native 后端（Windows/X11）无 portal 通知，空操作
     }
 }
 
-// 注意：与 anm（Alt+Shift+Z）可同机并存，故用不同默认值
-const DEFAULT_HOTKEY: &str = "Alt+Shift+A";
+// 默认 Alt+Shift+Z（与 anm 默认相同——若与 anm 同机并存需在设置里改其一）
+const DEFAULT_HOTKEY: &str = "Alt+Shift+Z";
 
 /// 读取「生效配置」：与 AppState::default 同一套默认值语义——
-/// 配置文件不存在或从未写过 hotkey 键时，总快捷键用默认 Alt+Shift+A；
+/// 配置文件不存在或从未写过 hotkey 键时，总快捷键用默认 Ctrl+Alt+Z；
 /// 配置文件出现 hotkey 键即尊重其值（含 null = 用户显式删除）。
 fn load_effective_config() -> TrayConfig {
     let mut cfg = load_config();
@@ -626,6 +638,7 @@ pub fn run() {
             //   2) 其它 Wayland 桌面（GNOME/Hyprland…）→ XDG Desktop Portal
             //      GlobalShortcuts（跨桌面标准）
             //   3) X11 会话 → native（tauri 插件）
+            #[cfg(target_os = "linux")]
             let pick = |kga_ok: bool, portal_ok: bool| -> Backend {
                 if kga_ok {
                     Backend::Kga
@@ -650,14 +663,21 @@ pub fn run() {
             match backend {
                 Backend::Kga => {
                     // KGA 后端：注册 + 信号监听在异步任务中；配置变更由 IPC 侧通知
-                    let tx = kglobalaccel::spawn(app.handle().clone());
-                    *app.state::<AppState>().portal_notify.lock().unwrap() = Some(tx);
+                    // （仅 Linux 存在该后端）
+                    #[cfg(target_os = "linux")]
+                    {
+                        let tx = kglobalaccel::spawn(app.handle().clone());
+                        *app.state::<AppState>().portal_notify.lock().unwrap() = Some(tx);
+                    }
                 }
                 Backend::Portal => {
                     // portal 后端：绑定 + 信号监听在异步任务中（首轮即绑定；
-                    // 此后配置变更由 IPC 侧 notify_portal 触发重绑）
-                    let tx = portal::spawn(app.handle().clone());
-                    *app.state::<AppState>().portal_notify.lock().unwrap() = Some(tx);
+                    // 此后配置变更由 IPC 侧 notify_portal 触发重绑；仅 Linux）
+                    #[cfg(target_os = "linux")]
+                    {
+                        let tx = portal::spawn(app.handle().clone());
+                        *app.state::<AppState>().portal_notify.lock().unwrap() = Some(tx);
+                    }
                 }
                 Backend::Native => {
                 // 插件快捷键（配置里带 hotkey 的插件）+ Alt+数字 序号切换
