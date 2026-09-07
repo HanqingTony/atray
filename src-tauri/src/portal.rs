@@ -5,7 +5,7 @@
 // org.freedesktop.portal.GlobalShortcuts（KDE Plasma 6 / GNOME 45+ 等均实现）。
 // 本模块用 ashpd 实现该后端：
 //   - 建 session → BindShortcuts（系统对话框让用户确认/修改按键）
-//   - 监听 Activated 信号分发：toggle（呼出/隐藏）/ plugin:<id>（切换应用）
+//   - 监听 Activated 信号分发：toggle（呼出/隐藏）/ webapp:<id>（切换应用）
 //   - 配置变更（notify）→ 关闭旧 session → 重新绑定（再次弹系统对话框）
 //
 // 使用条件：Linux + Wayland 会话（非 KDE；KDE 走 kglobalaccel.rs 直连后端——
@@ -197,10 +197,10 @@ async fn bind_session(
         }
         list.push(sc);
     }
-    for p in &cfg.plugins {
+    for p in &cfg.webapps {
         if let Some(hk) = &p.hotkey {
             let name = if p.name.is_empty() { p.id.clone() } else { p.name.clone() };
-            let mut sc = NewShortcut::new(format!("plugin:{}", p.id), format!("切换到 {name}"));
+            let mut sc = NewShortcut::new(format!("webapp:{}", p.id), format!("切换到 {name}"));
             if let Some(t) = to_xdg_trigger(hk) {
                 sc = sc.preferred_trigger(t.as_str());
             }
@@ -273,9 +273,9 @@ fn dispatch(app: &AppHandle, id: &str) {
         } else {
             show_main(&win);
         }
-    } else if let Some(pid) = id.strip_prefix("plugin:") {
+    } else if let Some(pid) = id.strip_prefix("webapp:") {
         show_main(&win);
-        let _ = app.emit("atray-plugin-activate", pid.to_string());
+        let _ = app.emit("atray-webapp-activate", pid.to_string());
     }
 }
 

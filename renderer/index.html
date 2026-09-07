@@ -78,8 +78,8 @@
     color: #ffffff;
     box-shadow: 0 4px 20px rgba(95,190,255,.25);
   }
-  #plugin-views { position: fixed; inset: 0; display: none; z-index: 50; }
-  #plugin-views iframe { width: 100%; height: 100%; border: none; background: #161a22; }
+  #webapp-views { position: fixed; inset: 0; display: none; z-index: 50; }
+  #webapp-views iframe { width: 100%; height: 100%; border: none; background: #161a22; }
   /* 隐藏按钮（≡ 快捷键语义）：紧贴屏幕角（布局可配置四角位置） */
   #quit-btn {
     position: fixed;
@@ -212,11 +212,11 @@
     <div class="big">atray</div>
     <button class="add-webui-btn" id="add-webui-btn">＋ 添加web应用</button>
   </div>
-  <div id="plugin-views"></div>
+  <div id="webapp-views"></div>
   <button id="quit-btn" title="退出 atray">✕</button>
   <div id="bottom-bar">
     <button class="b-btn" id="settings-btn" title="设置（web 应用 / 快捷键 / 布局 / 通用）">⚙ 设置</button>
-    <button class="b-btn" id="main-panel-btn" data-plugin="__main__" title="主面板">主面板</button>
+    <button class="b-btn" id="main-panel-btn" data-webapp="__main__" title="主面板">主面板</button>
   </div>
   <div id="settings-mask">
     <div id="settings-box">
@@ -288,7 +288,7 @@ const atrayApi = (() => {
     quit: () => core.invoke('atray_quit'),
     onEvent: (cb) => { evt.listen('atray-event', (e) => cb(e.payload)); },
     onMenu: (cb) => { evt.listen('atray-menu', (e) => cb(e.payload)); },
-    onPluginActivate: (cb) => { evt.listen('atray-plugin-activate', (e) => cb(e.payload)); },
+    onWebappActivate: (cb) => { evt.listen('atray-webapp-activate', (e) => cb(e.payload)); },
   };
 })();
 
@@ -311,68 +311,68 @@ function showToast(text) {
 }
 
 // ---------- web 应用系统 ----------
-const pluginBar = document.getElementById('bottom-bar');
-const pluginViews = document.getElementById('plugin-views');
+const webappBar = document.getElementById('bottom-bar');
+const webappViews = document.getElementById('webapp-views');
 const emptyHint = document.getElementById('empty-hint');
-let pluginFrames = {};
+let webappFrames = {};
 let appCfgs = [];        // web 应用列表 [{id, name, url, hotkey}]
-let activePlugin = null; // 当前激活应用 id（null = 主面板）
+let activeWebapp = null; // 当前激活应用 id（null = 主面板）
 let mainHotkey = 'Alt+Shift+Z';
 let hkBackend = 'native'; // 'native'（Windows/X11 即时注册）| 'portal'（Wayland 系统对话框）
 let portalKeys = {};      // portal 绑定结果：{shortcut_id: 系统实际按键描述}
 
-function activatePlugin(id) {
-  activePlugin = id;
+function activateWebapp(id) {
+  activeWebapp = id;
   const cur = id === null ? '__main__' : id;
   document.querySelectorAll('#bottom-bar .b-btn').forEach((b) => {
-    b.classList.toggle('active', b.dataset.plugin === cur);
+    b.classList.toggle('active', b.dataset.webapp === cur);
   });
   if (id === null) {
     emptyHint.style.display = 'flex';
-    pluginViews.style.display = 'none';
+    webappViews.style.display = 'none';
   } else {
     emptyHint.style.display = 'none';
-    pluginViews.style.display = 'block';
-    for (const [pid, frame] of Object.entries(pluginFrames)) {
+    webappViews.style.display = 'block';
+    for (const [pid, frame] of Object.entries(webappFrames)) {
       frame.style.display = pid === id ? 'block' : 'none';
     }
   }
 }
 
-function buildPluginUI() {
-  pluginBar.querySelectorAll('.b-btn[data-plugin]').forEach((b) => b.remove());
-  pluginViews.innerHTML = '';
-  pluginFrames = {};
+function buildWebappUI() {
+  webappBar.querySelectorAll('.b-btn[data-webapp]').forEach((b) => b.remove());
+  webappViews.innerHTML = '';
+  webappFrames = {};
   for (const p of appCfgs) {
     if (!p.id || !p.url) continue;
     const tab = document.createElement('button');
     tab.className = 'b-btn';
     tab.textContent = p.name || p.id;
-    tab.dataset.plugin = p.id;
+    tab.dataset.webapp = p.id;
     tab.title = p.url + (p.hotkey ? '（热键 ' + p.hotkey + '）' : '');
-    tab.onclick = () => activatePlugin(p.id === activePlugin ? null : p.id);
-    pluginBar.appendChild(tab);
+    tab.onclick = () => activateWebapp(p.id === activeWebapp ? null : p.id);
+    webappBar.appendChild(tab);
     const frame = document.createElement('iframe');
     frame.src = p.url;
     frame.style.display = 'none';
-    frame.setAttribute('data-plugin', p.id);
-    pluginViews.appendChild(frame);
-    pluginFrames[p.id] = frame;
+    frame.setAttribute('data-webapp', p.id);
+    webappViews.appendChild(frame);
+    webappFrames[p.id] = frame;
   }
 }
 
-atrayApi.onPluginActivate((id) => {
-  if (!pluginFrames[id]) return;
+atrayApi.onWebappActivate((id) => {
+  if (!webappFrames[id]) return;
   if (settingsMask.style.display === 'flex') return; // 设置面板打开时不切换
-  activatePlugin(id);
+  activateWebapp(id);
 });
 
 // Esc：应用中先回主面板；主面板时隐藏窗口
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (settingsMask.style.display === 'flex') { closeSettings(); return; }
-    if (activePlugin !== null) {
-      activatePlugin(null);
+    if (activeWebapp !== null) {
+      activateWebapp(null);
       e.stopPropagation();
     } else {
       atrayApi.hide();
@@ -381,8 +381,8 @@ document.addEventListener('keydown', (e) => {
 });
 
 atrayApi.onEvent((event) => {
-  if (event === 'shown' && activePlugin === null && appCfgs.length) {
-    activatePlugin(appCfgs[0].id);
+  if (event === 'shown' && activeWebapp === null && appCfgs.length) {
+    activateWebapp(appCfgs[0].id);
   }
 });
 atrayApi.onMenu(() => { openSettings(); });
@@ -398,7 +398,7 @@ document.addEventListener('keydown', (e) => {
   else return;
   if (idx >= appCfgs.length) return;
   e.preventDefault();
-  activatePlugin(appCfgs[idx].id);
+  activateWebapp(appCfgs[idx].id);
 });
 
 // ---------- 布局配置（localStorage 记忆；quit 与菜单栏不能同角） ----------
@@ -577,7 +577,7 @@ function renderHkList() {
     name.title = p.url;
     const value = document.createElement('span');
     value.className = 'hk-value' + (p.hotkey ? '' : ' empty');
-    value.textContent = hkDisplay('plugin:' + p.id, p.hotkey) || '（未设置）';
+    value.textContent = hkDisplay('webapp:' + p.id, p.hotkey) || '（未设置）';
     const setBtn = document.createElement('button');
     setBtn.className = 'btn hk-set';
     setBtn.textContent = '设置';
@@ -712,10 +712,10 @@ function renderAppList() {
     delBtn.textContent = '删除';
     delBtn.onclick = () => {
       if (!confirm('删除 web 应用「' + (p.name || p.id) + '」？')) return;
-      const wasActive = activePlugin === p.id;
+      const wasActive = activeWebapp === p.id;
       appCfgs = appCfgs.filter((x) => x.id !== p.id);
       saveApps(true);
-      if (wasActive) activatePlugin(null); // 删的是当前激活应用 → 回主面板
+      if (wasActive) activateWebapp(null); // 删的是当前激活应用 → 回主面板
       renderHkList();
     };
     row.append(name, url, hot, upBtn, downBtn, delBtn);
@@ -725,10 +725,10 @@ function renderAppList() {
 
 // 保存应用列表（即时生效）；rebuild 决定是否重建界面
 function saveApps(rebuild) {
-  atrayApi.setConfig({plugins: appCfgs}).then(() => {
+  atrayApi.setConfig({webapps: appCfgs}).then(() => {
     if (rebuild) {
-      buildPluginUI();
-      if (!appCfgs.length) activatePlugin(null);
+      buildWebappUI();
+      if (!appCfgs.length) activateWebapp(null);
     }
   });
 }
@@ -771,7 +771,7 @@ document.getElementById('main-hk-del').onclick = () => {
 };
 document.getElementById('s-ok').onclick = closeSettings;
 document.getElementById('settings-btn').onclick = () => { openSettings(); };
-document.getElementById('main-panel-btn').onclick = () => activatePlugin(null);
+document.getElementById('main-panel-btn').onclick = () => activateWebapp(null);
 document.getElementById('add-webui-btn').onclick = () => openSettings('apps');
 document.getElementById('quit-btn').onclick = () => atrayApi.hide();
 document.getElementById('add-webui-btn').onclick = () => openSettings('apps');
@@ -786,14 +786,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (r.status === 'ok') {
       if (typeof r.data.hotkey === 'string') mainHotkey = r.data.hotkey;
       else mainHotkey = null;
-      if (r.data.plugins) appCfgs = r.data.plugins;
+      if (r.data.webapps) appCfgs = r.data.webapps;
       if (r.data.backend) hkBackend = r.data.backend;
       if (r.data.portal_keys && typeof r.data.portal_keys === 'object') portalKeys = r.data.portal_keys;
     }
   } catch (e) {}
-  buildPluginUI();
-  if (appCfgs.length) activatePlugin(appCfgs[0].id);
-  else activatePlugin(null);
+  buildWebappUI();
+  if (appCfgs.length) activateWebapp(appCfgs[0].id);
+  else activateWebapp(null);
 });
 </script>
 </body>

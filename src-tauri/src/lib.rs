@@ -4,7 +4,7 @@
 //  - 透明全屏置顶窗口（原生 fullscreen + force-device-scale-factor=1）
 //  - 全局热键（默认 Alt+Shift+Z）+ 每个插件可设独立快捷键直接呼出
 //  - 系统托盘（显示 / 设置 / 退出）
-//  - 插件注册持久化：config.json（hotkey + plugins）
+//  - 插件注册持久化：config.json（hotkey + webapps）
 //  - 自定义协议 atray://（Windows http://atray.localhost）服务 exe 旁 renderer/
 //  - 无任何笔记/服务器概念（与 anm-core 无关）
 
@@ -34,13 +34,13 @@ enum Backend {
 // 配置
 // ---------------------------------------------------------------------------
 
-/// 插件注册（设置菜单管理：URL 引入）。
+/// web 应用注册（设置菜单管理：URL 引入）。
 #[derive(Serialize, Deserialize, Default, Clone)]
-struct PluginCfg {
+struct WebAppCfg {
     id: String,
     name: String,
     url: String,
-    /// 插件页面快捷键（可选，如 "Alt+Shift+1"）
+    /// 应用页面快捷键（可选，如 "Alt+Shift+1"）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hotkey: Option<String>,
 }
@@ -49,8 +49,10 @@ struct PluginCfg {
 #[derive(Serialize, Deserialize, Default, Clone)]
 struct TrayConfig {
     hotkey: Option<String>,
-    #[serde(default)]
-    plugins: Vec<PluginCfg>,
+    /// web 应用列表。alias="webapps"：兼容 v1.2.0 之前的旧字段名（旧文件直接读，
+    /// 下次保存即迁移为新键 webapps）
+    #[serde(default, alias = "plugins")]
+    webapps: Vec<WebAppCfg>,
 }
 
 fn config_path() -> Option<std::path::PathBuf> {
@@ -91,7 +93,7 @@ struct AppState {
     /// 当前注册的 Shortcut（重设时先 unregister）
     hotkey_shortcut: Mutex<Option<tauri_plugin_global_shortcut::Shortcut>>,
     /// 插件快捷键：id -> Shortcut（注销/重设用）
-    plugin_shortcuts: Mutex<Vec<(String, tauri_plugin_global_shortcut::Shortcut)>>,
+    webapp_shortcuts: Mutex<Vec<(String, tauri_plugin_global_shortcut::Shortcut)>>,
     /// Alt+数字 序号切换（仅覆盖层激活时生效）：已注册的 Shortcut（顺序变更时整组重注册）
     alt_shortcuts: Mutex<Vec<tauri_plugin_global_shortcut::Shortcut>>,
     /// 热键后端（setup 时确定）
@@ -152,7 +154,7 @@ impl Default for AppState {
         Self {
             hotkey: Mutex::new(cfg.hotkey),
             hotkey_shortcut: Mutex::new(None),
-            plugin_shortcuts: Mutex::new(Vec::new()),
+            webapp_shortcuts: Mutex::new(Vec::new()),
             alt_shortcuts: Mutex::new(Vec::new()),
             backend: Mutex::new(Backend::Native),
             portal_notify: Mutex::new(None),
@@ -181,24 +183,26 @@ fn err(msg: String) -> IpcResp {
     }
 }
 
-/// 设置插件列表（整体替换）并同步快捷键。
+/// 设置 web 应用列表（整体替换）并同步快捷键。
 #[tauri::command]
 fn atray_set_config(app: tauri::AppHandle, cfg: Option<serde_json::Value>) -> IpcResp {
     let mut save = load_config();
     if let Some(cfg) = cfg {
-        if let Some(plugins) = cfg.get("plugins").and_then(|v| v.as_array()) {
-            let list: Vec<PluginCfg> = plugins
+        // 新字段 webapps；兼容旧字段名 plugins（v1.2.0 之前的旧前端/配置）
+        let arr = cfg.get("webapps").or_else(|| cfg.get("webapps"));
+        if let Some(v) = arr.and_then(|v| v.as_array()) {
+            let list: Vec<WebAppCfg> = v
                 .iter()
                 .filter_map(|p| serde_json::from_value(p.clone()).ok())
                 .collect();
-            save.plugins = list.clone();
-            sync_plugin_shortcuts(&app, &list);
+            save.webapps = list.clone();
+            sync_webapp_shortcuts(&app, &list);
             sync_alt_shortcuts(&app, &list); // 增删/排序后 Alt+数字 序号映射同步
         }
     }
     save_config(&save);
-    notify_portal(&app); // portal 模式：插件/快捷键增删 → 重绑（native 为空操作）
-    ok(serde_json::json!({ "ok": true, "plugins": save.plugins.len() }))
+    notify_portal(&app); // portal 模式：应用/快捷键增删 → 重绑（native 为空操作）
+    ok(serde_json::json!({ "ok": true, "webapps": save.webapps.len() }))
 }
 
 /// 读取当前配置（前端显示用）。
@@ -218,7 +222,7 @@ fn atray_get_config(state: State<AppState>) -> IpcResp {
         .collect();
     ok(serde_json::json!({
         "hotkey": state.hotkey.lock().unwrap().clone(),
-        "plugins": load_config().plugins,
+        "webapps": load_config().webapps,
         "backend": backend,
         "portal_keys": portal_keys,
     }))
@@ -369,7 +373,7 @@ fn atray_hide(app: tauri::AppHandle) -> IpcResp {
 // ---------------------------------------------------------------------------
 
 /// 同步插件快捷键：注销被删/无热键的，注册新增/更新的（按下 = 显示窗口 + 通知前端激活插件）
-fn sync_plugin_shortcuts(app: &tauri::AppHandle, plugins: &[PluginCfg]) {
+fn sync_webapp_shortcuts(app: &tauri::AppHandle, webapps: &[WebAppCfg]) {
     // portal/KGA 模式：快捷键由对应后端统一管理，native 注册跳过
     if let Some(state) = app.try_state::<AppState>() {
         if *state.backend.lock().unwrap() == Backend::Portal
@@ -380,15 +384,15 @@ fn sync_plugin_shortcuts(app: &tauri::AppHandle, plugins: &[PluginCfg]) {
     }
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
     let state = app.state::<AppState>();
-    let mut registered = state.plugin_shortcuts.lock().unwrap();
+    let mut registered = state.webapp_shortcuts.lock().unwrap();
     registered.retain(|(id, sc)| {
-        let keep = plugins.iter().any(|p| &p.id == id);
+        let keep = webapps.iter().any(|p| &p.id == id);
         if !keep {
             let _ = app.global_shortcut().unregister(sc.clone());
         }
         keep
     });
-    for p in plugins {
+    for p in webapps {
         let existing = registered.iter().position(|(id, _)| id == &p.id);
         match (&p.hotkey, existing) {
             (Some(hk), Some(idx)) => {
@@ -401,7 +405,7 @@ fn sync_plugin_shortcuts(app: &tauri::AppHandle, plugins: &[PluginCfg]) {
                             if let Some(win) = app.get_webview_window("main") {
                                 show_main(&win);
                             }
-                            let _ = app.emit("atray-plugin-activate", pid.clone());
+                            let _ = app.emit("atray-webapp-activate", pid.clone());
                         }
                     });
                     registered.push((p.id.clone(), sc));
@@ -415,7 +419,7 @@ fn sync_plugin_shortcuts(app: &tauri::AppHandle, plugins: &[PluginCfg]) {
                             if let Some(win) = app.get_webview_window("main") {
                                 show_main(&win);
                             }
-                            let _ = app.emit("atray-plugin-activate", pid.clone());
+                            let _ = app.emit("atray-webapp-activate", pid.clone());
                         }
                     });
                     registered.push((p.id.clone(), sc));
@@ -435,7 +439,7 @@ fn sync_plugin_shortcuts(app: &tauri::AppHandle, plugins: &[PluginCfg]) {
 /// 需求：覆盖层激活（窗口可见且聚焦）时无论焦点在哪个 web 应用 iframe 里都能切换，
 /// 纯前端 keydown 收不到跨源 iframe 内的按键，故走全局热键；但只在窗口激活时响应，
 /// 窗口隐藏/失焦时按下不做任何事（不抢其他程序的 Alt+数字）。
-fn sync_alt_shortcuts(app: &tauri::AppHandle, plugins: &[PluginCfg]) {
+fn sync_alt_shortcuts(app: &tauri::AppHandle, webapps: &[WebAppCfg]) {
     // portal/KGA 模式：Alt+数字 由后端表达代价高（10 个系统动作 + 全局触发语义不符，
     // 该功能服务于窗口内切换），Wayland 下跳过；窗口内切换可用各应用自有快捷键
     if let Some(state) = app.try_state::<AppState>() {
@@ -452,7 +456,7 @@ fn sync_alt_shortcuts(app: &tauri::AppHandle, plugins: &[PluginCfg]) {
     for sc in regs.drain(..) {
         let _ = app.global_shortcut().unregister(sc);
     }
-    for (i, p) in plugins.iter().take(10).enumerate() {
+    for (i, p) in webapps.iter().take(10).enumerate() {
         let key = if i == 9 { "Alt+0".into() } else { format!("Alt+{}", i + 1) };
         let Ok(sc) = tauri_plugin_global_shortcut::Shortcut::from_str(&key) else {
             continue;
@@ -470,7 +474,7 @@ fn sync_alt_shortcuts(app: &tauri::AppHandle, plugins: &[PluginCfg]) {
                 return;
             }
             let _ = win.set_focus();
-            let _ = app.emit("atray-plugin-activate", pid.clone());
+            let _ = app.emit("atray-webapp-activate", pid.clone());
         }) {
             Ok(()) => regs.push(sc),
             Err(e) => {
@@ -681,9 +685,9 @@ pub fn run() {
                 }
                 Backend::Native => {
                 // 插件快捷键（配置里带 hotkey 的插件）+ Alt+数字 序号切换
-                let plugins = load_config().plugins;
-                sync_plugin_shortcuts(app.handle(), &plugins);
-                sync_alt_shortcuts(app.handle(), &plugins);
+                let webapps = load_config().webapps;
+                sync_webapp_shortcuts(app.handle(), &webapps);
+                sync_alt_shortcuts(app.handle(), &webapps);
 
                 // 全局热键（配置的；显式删除后为 None → 不注册，托盘仍可用）
                 use tauri_plugin_global_shortcut::GlobalShortcutExt;

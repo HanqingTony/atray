@@ -201,10 +201,10 @@ fn desired_actions(cfg: &TrayConfig) -> Vec<(String, String, Vec<i32>)> {
     if let Some(hk) = cfg.hotkey.as_deref().and_then(to_qt_keys) {
         want.push(("toggle".into(), "呼出/隐藏 atray 覆盖层".into(), hk));
     }
-    for p in &cfg.plugins {
+    for p in &cfg.webapps {
         if let Some(hk) = p.hotkey.as_deref().and_then(to_qt_keys) {
             let name = if p.name.is_empty() { p.id.clone() } else { p.name.clone() };
-            want.push((format!("plugin:{}", p.id), format!("切换到 {name}"), hk));
+            want.push((format!("webapp:{}", p.id), format!("切换到 {name}"), hk));
         }
     }
     want
@@ -344,9 +344,9 @@ fn dispatch(app: &AppHandle, id: &str) {
         } else {
             show_main(&win);
         }
-    } else if let Some(pid) = id.strip_prefix("plugin:") {
+    } else if let Some(pid) = id.strip_prefix("webapp:") {
         show_main(&win);
-        let _ = app.emit("atray-plugin-activate", pid.to_string());
+        let _ = app.emit("atray-webapp-activate", pid.to_string());
     }
 }
 
