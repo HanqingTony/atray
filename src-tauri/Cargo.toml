@@ -21,6 +21,7 @@ tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-autostart = "2"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
 # Linux Wayland 全局热键：XDG Desktop Portal GlobalShortcuts（跨 KDE/GNOME 等桌面）
 [target.'cfg(target_os = "linux")'.dependencies]

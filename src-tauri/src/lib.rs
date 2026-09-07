@@ -43,14 +43,17 @@ struct WebAppCfg {
     /// 应用页面快捷键（可选，如 "Alt+Shift+1"）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hotkey: Option<String>,
+    /// 应用图标 URL（自动探测的 favicon；无则前端显示首字母徽标）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    icon: Option<String>,
 }
 
 /// 持久化配置（%APPDATA%/atray/config.json 或 ~/.config/atray/）。
 #[derive(Serialize, Deserialize, Default, Clone)]
 struct TrayConfig {
     hotkey: Option<String>,
-    /// web 应用列表。alias="webapps"：兼容 v1.2.0 之前的旧字段名（旧文件直接读，
-    /// 下次保存即迁移为新键 webapps）
+    /// web 应用列表。alias 保留旧字段名 plugins：兼容 v1.2.0 之前的配置文件
+    /// （旧文件直接读，下次保存即迁移为新键 webapps）
     #[serde(default, alias = "plugins")]
     webapps: Vec<WebAppCfg>,
 }
@@ -368,6 +371,106 @@ fn atray_hide(app: tauri::AppHandle) -> IpcResp {
     ok(serde_json::json!({ "ok": true }))
 }
 
+/// 探测页面真实 favicon：抓 HTML 解析 `<link rel="icon"…>`，返回候选绝对 URL。
+/// http/https 均可（reqwest+rustls）；兼容 chunked/相对路径。零配置，6s 超时。
+#[tauri::command]
+async fn atray_probe_icons(url: String) -> IpcResp {
+    let mut icons: Vec<String> = Vec::new();
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(6))
+        .user_agent("atray/1.2 icon-probe")
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => return err(format!("HTTP 客户端构建失败: {e}")),
+    };
+    if let Ok(resp) = client.get(&url).send().await {
+        if resp.status().is_success() {
+            if let Ok(bytes) = resp.bytes().await {
+                let mut body = bytes.to_vec();
+                body.truncate(512 * 1024);
+                let html = String::from_utf8_lossy(&body);
+                icons = extract_icon_hrefs(&html, &url);
+            }
+        }
+    }
+    ok(serde_json::json!({ "icons": icons }))
+}
+
+/// 解析 `<link … rel=含 icon … href=…>`（大小写不敏感，单/双引号或无引号）。
+fn extract_icon_hrefs(html: &str, page: &str) -> Vec<String> {
+    let low = html.to_ascii_lowercase();
+    let mut out: Vec<String> = Vec::new();
+    let mut idx = 0usize;
+    while let Some(p) = low[idx..].find("<link") {
+        let seg_start = idx + p;
+        let seg_end = low[seg_start..]
+            .find('>')
+            .map(|q| seg_start + q)
+            .unwrap_or(low.len());
+        let seg = &low[seg_start..seg_end];
+        idx = if seg_end < low.len() { seg_end + 1 } else { low.len() };
+        // rel 属性值需含 icon（涵盖 rel="icon"/"shortcut icon"），并排除 mask 等
+        if seg.contains("rel") && seg.contains("icon") && !seg.contains("mask") {
+            if let Some(href) = extract_attr(seg, "href") {
+                if let Some(abs) = absolutize(&href, page) {
+                    if !out.contains(&abs) {
+                        out.push(abs);
+                    }
+                }
+            }
+        }
+    }
+    out.truncate(5);
+    out
+}
+
+fn extract_attr(seg: &str, name: &str) -> Option<String> {
+    let name = format!("{name}=");
+    let at = seg.find(&name)?;
+    let val = &seg[at + name.len()..];
+    let val = val.trim_start();
+    if val.is_empty() {
+        return None;
+    }
+    let first = val.chars().next()?;
+    if first == '"' || first == '\'' {
+        let end = val[1..].find(first)?;
+        Some(val[1..1 + end].to_string())
+    } else {
+        let end = val.find(|c: char| c.is_whitespace() || c == '>').unwrap_or(val.len());
+        Some(val[..end].to_string())
+    }
+}
+
+fn absolutize(href: &str, page: &str) -> Option<String> {
+    if href.starts_with("http://") || href.starts_with("https://") {
+        return Some(href.to_string());
+    }
+    // 页面 URL 提取 scheme + host(+port) 与「目录」部分
+    let (scheme, rest) = if let Some(r) = page.strip_prefix("http://") {
+        ("http", r)
+    } else if let Some(r) = page.strip_prefix("https://") {
+        ("https", r)
+    } else {
+        return None;
+    };
+    let slash = rest.find('/').unwrap_or(rest.len());
+    let origin = format!("{scheme}://{}", &rest[..slash]);
+    if href.starts_with("//") {
+        return Some(format!("{scheme}:{href}"));
+    }
+    if href.starts_with('/') {
+        return Some(format!("{origin}{href}"));
+    }
+    let path = if slash < rest.len() { &rest[slash..] } else { "/" };
+    let dir = match path.rfind('/') {
+        Some(i) => &path[..=i],
+        None => "/",
+    };
+    Some(format!("{origin}{dir}{href}"))
+}
+
 // ---------------------------------------------------------------------------
 // 插件快捷键
 // ---------------------------------------------------------------------------
@@ -586,6 +689,7 @@ pub fn run() {
             atray_clear_hotkey,
             atray_get_autostart,
             atray_set_autostart,
+            atray_probe_icons,
             atray_hide,
             atray_quit
         ])

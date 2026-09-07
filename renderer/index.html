@@ -102,26 +102,39 @@
   /* 底部工具栏（菜单栏）：位置可配置（左下/右下/底部居中） */
   #bottom-bar {
     position: fixed;
-    display: flex; align-items: stretch; gap: 0;
+    display: flex; align-items: center; gap: 0;
     z-index: 150;
   }
   #bottom-bar.bl { left: 0; bottom: 0; }
   #bottom-bar.br { right: 0; bottom: 0; }
   #bottom-bar.bc { left: 50%; transform: translateX(-50%); bottom: 0; }
+  /* 应用按钮容器：必须是 flex 行（.b-btn 是块级 flex，直接放 span 里会纵向堆叠） */
+  #app-btns { display: flex; align-items: center; }
   .b-btn {
-    padding: 9px 16px;
+    padding: 7px 14px;
     background: var(--input-bg);
     border: 1px solid var(--card-border); border-radius: 0;
     color: var(--text-dim); font-size: 13px;
     cursor: pointer; font-family: inherit;
     display: flex; align-items: center; gap: 6px;
     white-space: nowrap;
+    height: 34px;
   }
   .b-btn + .b-btn { margin-left: -1px; }
   .b-btn:hover { border-color: var(--accent); color: var(--accent); z-index: 1; }
   .b-btn.active { border-color: var(--accent); color: var(--accent); background: var(--card); z-index: 1; }
+  /* web 应用按钮：图标显示（无图标 = 首字母徽标），名称只进 tooltip */
+  .b-btn.app { padding: 3px 6px; min-width: 36px; justify-content: center; }
+  .b-btn.app .bi { width: 26px; height: 26px; object-fit: contain; display: block; border-radius: 5px; }
+  .b-btn.app .bd {
+    width: 26px; height: 26px; border-radius: 6px;
+    background: linear-gradient(135deg, #31455c, #222b38);
+    border: 1px solid var(--card-border);
+    color: var(--accent); font-size: 13px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
   .hidden { display: none !important; }
-  /* 设置面板 */
+  /* 设置面板：左侧纵向卡片式导航 */
   #settings-mask {
     display: none; position: fixed; inset: 0;
     background: rgba(8, 10, 16, 0.6);
@@ -129,21 +142,26 @@
     z-index: 300;
   }
   #settings-box {
-    width: 520px; max-height: 82vh;
+    width: 720px; max-height: 82vh;
     background: var(--card); border: 1px solid #6a7a8f; border-radius: 12px;
-    padding: 18px; display: flex; flex-direction: column; gap: 12px;
+    padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;
   }
   #settings-box h3 { margin: 0; font-size: 15px; color: var(--accent); }
-  #s-menu { display: flex; gap: 4px; border-bottom: 1px solid var(--card-border); padding-bottom: 8px; }
+  .settings-main { display: flex; gap: 14px; flex: 1; min-height: 0; }
+  #s-menu {
+    display: flex; flex-direction: column; gap: 4px;
+    min-width: 104px; padding-right: 12px;
+    border-right: 1px solid var(--card-border);
+  }
   .s-menu-item {
-    padding: 5px 14px; border-radius: 6px;
+    padding: 7px 12px; border-radius: 8px;
     border: 1px solid transparent; background: transparent;
     color: var(--text-dim); cursor: pointer;
-    font-size: 13px; font-family: inherit;
+    font-size: 13px; font-family: inherit; text-align: left;
   }
-  .s-menu-item:hover { color: var(--text); }
-  .s-menu-item.active { border-color: var(--card-border); background: var(--input-bg); color: var(--accent); }
-  #s-body { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+  .s-menu-item:hover { color: var(--text); background: var(--input-bg); }
+  .s-menu-item.active { border-color: var(--card-border); background: var(--input-bg); color: var(--accent); font-weight: 600; }
+  #s-body { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; flex: 1; min-width: 0; }
   .s-page { display: flex; flex-direction: column; gap: 8px; }
   #settings-box label { font-size: 12px; color: var(--text-dim); }
   #settings-box input {
@@ -169,19 +187,33 @@
   .hk-row .hk-value { color: var(--warm); flex: 1; font-size: 13px; letter-spacing: .5px; }
   .hk-row .hk-value.empty { color: var(--text-dim); font-style: italic; }
   .hk-row .btn { padding: 2px 10px; font-size: 12px; }
-  #app-list { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+  #app-list { display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; }
   .app-row {
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 6px;
     background: var(--input-bg); border: 1px solid var(--card-border);
-    border-radius: 6px; padding: 6px 10px; font-size: 13px;
+    border-radius: 6px; padding: 3px 8px; font-size: 13px;
   }
-  .app-row .a-name { color: var(--text); flex: none; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .app-row.drag-over { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(95,190,255,.35); }
+  .app-row.dragging { opacity: .55; border-style: dashed; }
+  .app-row.dragging .drag { cursor: grabbing; }
+  .app-row .drag {
+    cursor: grab; color: var(--text-dim); font-size: 15px;
+    padding: 2px 6px; user-select: none; flex: none;
+  }
+  .app-row .drag:active { cursor: grabbing; }
+  /* 顺序列（必须压过 #settings-box input 的 100% 宽度规则） */
+  #app-list .app-row .order {
+    width: 46px; min-width: 46px; height: 24px; flex: none; text-align: center;
+    background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 5px;
+    color: var(--warm); font-size: 12px; padding: 0 2px; outline: none; font-family: inherit;
+  }
+  #app-list .app-row .order:focus { border-color: var(--accent); }
+  .app-row .a-name { color: var(--text); flex: none; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .app-row .a-url { color: var(--text-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-  .app-row .a-hot { color: var(--warm); font-size: 12px; flex: none; min-width: 90px; text-align: right; }
-  .app-row .btn { padding: 2px 10px; font-size: 12px; }
+  .app-row .a-hot { color: var(--warm); font-size: 12px; flex: none; min-width: 80px; text-align: right; }
+  .app-row .btn { padding: 2px 9px; font-size: 12px; }
   .btn:disabled { opacity: .35; cursor: default; }
   .btn:disabled:hover { border-color: var(--card-border); }
-  .app-row .btn.mv { padding: 2px 7px; }
   .p-add { display: flex; gap: 6px; }
   .p-add input {
     flex: 1; height: 30px;
@@ -216,18 +248,20 @@
   <button id="quit-btn" title="退出 atray">✕</button>
   <div id="bottom-bar">
     <button class="b-btn" id="settings-btn" title="设置（web 应用 / 快捷键 / 布局 / 通用）">⚙ 设置</button>
-    <button class="b-btn" id="main-panel-btn" data-webapp="__main__" title="主面板">主面板</button>
+    <button class="b-btn" id="main-panel-btn" data-webapp="__main__" title="主面板">⏻ 主面板</button>
+    <span id="app-btns"></span>
   </div>
   <div id="settings-mask">
     <div id="settings-box">
       <h3>设置</h3>
-      <div id="s-menu">
-        <button class="s-menu-item active" data-menu="apps">web 应用</button>
-        <button class="s-menu-item" data-menu="hotkey">快捷键</button>
-        <button class="s-menu-item" data-menu="layout">布局</button>
-        <button class="s-menu-item" data-menu="general">通用</button>
-      </div>
-      <div id="s-body">
+      <div class="settings-main">
+        <div id="s-menu">
+          <button class="s-menu-item active" data-menu="apps">web 应用</button>
+          <button class="s-menu-item" data-menu="hotkey">快捷键</button>
+          <button class="s-menu-item" data-menu="layout">布局</button>
+          <button class="s-menu-item" data-menu="general">通用</button>
+        </div>
+        <div id="s-body">
         <div class="s-page hidden" id="s-page-hotkey">
           <label id="hk-label-main">总快捷键：呼出/隐藏覆盖层（点「设置」后按新组合，即时生效）</label>
           <div class="hk-row" id="main-hk-row">
@@ -241,7 +275,7 @@
           <div id="hotkey-err"></div>
         </div>
         <div class="s-page" id="s-page-apps">
-          <label>web 应用（输入 URL 添加；↑↓ 调整顺序；删除即时生效）</label>
+          <label>web 应用（输入 URL 添加；拖动 ⠿ 或直接改「顺序」数字调整位置；删除即时生效）</label>
           <div id="app-list"></div>
           <div class="p-add">
             <input id="p-url" placeholder="应用 URL（http(s):// 或 atray://localhost/…）" spellcheck="false">
@@ -265,6 +299,7 @@
           <div id="autostart-err"></div>
         </div>
       </div>
+      </div>
       <div class="s-row">
         <button class="btn" id="s-ok">完成</button>
       </div>
@@ -284,6 +319,7 @@ const atrayApi = (() => {
     clearHotkey: () => core.invoke('atray_clear_hotkey'),
     getAutostart: () => core.invoke('atray_get_autostart'),
     setAutostart: (enable) => core.invoke('atray_set_autostart', { enable }),
+    probeIcons: (url) => core.invoke('atray_probe_icons', { url }),
     hide: () => core.invoke('atray_hide'),
     quit: () => core.invoke('atray_quit'),
     onEvent: (cb) => { evt.listen('atray-event', (e) => cb(e.payload)); },
@@ -311,7 +347,6 @@ function showToast(text) {
 }
 
 // ---------- web 应用系统 ----------
-const webappBar = document.getElementById('bottom-bar');
 const webappViews = document.getElementById('webapp-views');
 const emptyHint = document.getElementById('empty-hint');
 let webappFrames = {};
@@ -323,10 +358,7 @@ let portalKeys = {};      // portal 绑定结果：{shortcut_id: 系统实际按
 
 function activateWebapp(id) {
   activeWebapp = id;
-  const cur = id === null ? '__main__' : id;
-  document.querySelectorAll('#bottom-bar .b-btn').forEach((b) => {
-    b.classList.toggle('active', b.dataset.webapp === cur);
-  });
+  syncActiveUI();
   if (id === null) {
     emptyHint.style.display = 'flex';
     webappViews.style.display = 'none';
@@ -339,26 +371,148 @@ function activateWebapp(id) {
   }
 }
 
+// ---------- 引擎：图标按钮 / iframe 生命周期 / 本地即时生效 ----------
+const appBtnsBox = document.getElementById('app-btns');
+const iconProbed = {}; // id -> true：避免重复探测
+
+function iconElOf(p) {
+  if (p.icon) {
+    const im = document.createElement('img');
+    im.className = 'bi';
+    im.alt = '';
+    im.src = p.icon;
+    im.onerror = () => {
+      p.icon = null; // 图标失效 → 徽标并清除记录，下次启动再探测
+      const tabEl = appBtnsBox.querySelector('.b-btn[data-webapp="' + p.id + '"]');
+      if (tabEl) {
+        tabEl.querySelectorAll('.bi,.bd').forEach((n) => n.remove());
+        tabEl.appendChild(iconElOf(p));
+      }
+      persistApps();
+    };
+    return im;
+  }
+  return badgeElOf(p);
+}
+function badgeElOf(p) {
+  const b = document.createElement('span');
+  b.className = 'bd';
+  b.textContent = (p.name || p.id || '?').trim().charAt(0).toUpperCase();
+  return b;
+}
+function makeAppTab(p) {
+  const tab = document.createElement('button');
+  tab.className = 'b-btn app';
+  tab.dataset.webapp = p.id;
+  tab.title = (p.name || p.id) + ' · ' + p.url + (p.hotkey ? '（热键 ' + p.hotkey + '）' : '');
+  tab.onclick = () => activateWebapp(p.id === activeWebapp ? null : p.id);
+  tab.appendChild(iconElOf(p));
+  return tab;
+}
+function ensureWebapp(p) {
+  if (!webappFrames[p.id]) {
+    const frame = document.createElement('iframe');
+    frame.src = p.url;
+    frame.style.display = 'none';
+    webappViews.appendChild(frame);
+    webappFrames[p.id] = frame;
+  }
+  appBtnsBox.appendChild(makeAppTab(p));
+}
+function removeWebapp(id) {
+  const frame = webappFrames[id];
+  if (frame) { frame.remove(); delete webappFrames[id]; }
+  const tab = appBtnsBox.querySelector('.b-btn[data-webapp="' + id + '"]');
+  if (tab) tab.remove();
+  if (activeWebapp === id) activateWebapp(null); // 删的是当前激活应用 → 立即回主面板
+}
+// 只重建按钮区（不动 iframe → 正在用的应用不重载）
+function renderBar() {
+  appBtnsBox.innerHTML = '';
+  for (const p of appCfgs) {
+    if (!p.id || !p.url) continue;
+    appBtnsBox.appendChild(makeAppTab(p));
+  }
+  syncActiveUI();
+}
+function syncActiveUI() {
+  const cur = activeWebapp === null ? '__main__' : activeWebapp;
+  document.querySelectorAll('#bottom-bar .b-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.webapp === cur);
+  });
+}
 function buildWebappUI() {
-  webappBar.querySelectorAll('.b-btn[data-webapp]').forEach((b) => b.remove());
+  appBtnsBox.innerHTML = '';
   webappViews.innerHTML = '';
   webappFrames = {};
   for (const p of appCfgs) {
     if (!p.id || !p.url) continue;
-    const tab = document.createElement('button');
-    tab.className = 'b-btn';
-    tab.textContent = p.name || p.id;
-    tab.dataset.webapp = p.id;
-    tab.title = p.url + (p.hotkey ? '（热键 ' + p.hotkey + '）' : '');
-    tab.onclick = () => activateWebapp(p.id === activeWebapp ? null : p.id);
-    webappBar.appendChild(tab);
+    appBtnsBox.appendChild(makeAppTab(p));
     const frame = document.createElement('iframe');
     frame.src = p.url;
     frame.style.display = 'none';
-    frame.setAttribute('data-webapp', p.id);
     webappViews.appendChild(frame);
     webappFrames[p.id] = frame;
   }
+  syncActiveUI();
+}
+
+// favicon 探测：候选 = Rust 抓 HTML 解析的 <link rel=icon> 绝对 URL（http 页面）；
+// https 页面无法抓取 → 经典回退 origin/favicon.ico|png。逐个 <img> 实测加载，
+// 命中即记入配置并即时更新按钮（都不中 → 保持首字母徽标）。
+function probeIcon(p) {
+  if (p.icon || iconProbed[p.id]) return;
+  iconProbed[p.id] = true;
+  let origin = '';
+  try {
+    const u = new URL(p.url);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return;
+    origin = u.origin;
+  } catch (e) { return; }
+  const fallback = [origin + '/favicon.ico', origin + '/favicon.png'];
+  const tryLoad = (cands) => {
+    let k = 0;
+    const next = () => {
+      if (k >= cands.length) return; // 全部失败 → 保持徽标
+      const im = new Image();
+      const src = cands[k++];
+      im.onload = () => {
+        p.icon = src;
+        updateTabIcon(p);
+        persistApps();
+      };
+      im.onerror = next;
+      im.src = src;
+    };
+    next();
+  };
+  // http/https 都走后端 HTML 解析（https 需 TLS，后端 reqwest+rustls 处理）；
+  // atray:// 本地页直接回退默认路径探测
+  if (p.url.startsWith('http://') || p.url.startsWith('https://')) {
+    atrayApi.probeIcons(p.url).then((r) => {
+      const list = (r && r.status === 'ok' && Array.isArray(r.data.icons)) ? r.data.icons : [];
+      tryLoad(list.length ? list.concat(fallback) : fallback);
+    }).catch(() => tryLoad(fallback));
+  } else {
+    tryLoad(fallback);
+  }
+}
+function updateTabIcon(p) {
+  const tabEl = appBtnsBox.querySelector('.b-btn[data-webapp="' + p.id + '"]');
+  if (!tabEl) return;
+  tabEl.querySelectorAll('.bi,.bd').forEach((n) => n.remove());
+  tabEl.appendChild(iconElOf(p));
+}
+
+// 持久化（60ms 防抖合并；失败仅提示——界面已按本地状态即时生效）
+let saveTimer = null;
+function persistApps() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    atrayApi.setConfig({webapps: appCfgs}).then((r) => {
+      if (r && r.status === 'error') showToast('保存失败：' + r.data);
+    }).catch((e) => showToast('保存失败：' + e));
+  }, 60);
 }
 
 atrayApi.onWebappActivate((id) => {
@@ -497,10 +651,12 @@ function refreshPortalKeys() {
 function openSettings(menu) {
   switchMenu(menu || 'apps'); // 默认落在第一个菜单页（web 应用）
   settingsMask.style.display = 'flex';
+  document.getElementById('bottom-bar').style.display = 'none'; // 面板下不露底栏
 }
 function closeSettings() {
   cancelCapture();
   settingsMask.style.display = 'none';
+  document.getElementById('bottom-bar').style.display = '';
 }
 
 // ---------- 通用页（开机自启） ----------
@@ -590,8 +746,9 @@ function renderHkList() {
       delBtn.textContent = '删除';
       delBtn.onclick = () => {
         p.hotkey = null;
-        saveApps(false);
+        persistApps();
         renderHkList();
+        renderBar();
         showToast('已删除「' + (p.name || p.id) + '」快捷键');
       };
       row.appendChild(delBtn);
@@ -652,24 +809,25 @@ document.addEventListener('keydown', (e) => {
     const p = appCfgs.find((x) => x.id === target);
     if (p) {
       p.hotkey = combo;
-      saveApps(false);
+      persistApps();
       renderHkList();
+      renderBar();
       if (hkBackend === 'portal') showToast('「' + (p.name || p.id) + '」已保存，请在系统对话框中确认按键');
       else showToast('「' + (p.name || p.id) + '」快捷键：' + combo);
     }
   }
 });
 
-// ---------- web 应用管理页 ----------
-function moveApp(from, dir) {
-  const to = from + dir;
-  if (to < 0 || to >= appCfgs.length) return;
+// ---------- web 应用管理页（顺序列：手填数字 或 拖拽整行） ----------
+function reorderWebapp(from, to) {
+  if (to === from || to < 0 || to >= appCfgs.length) return;
   const arr = appCfgs.slice();
   const t = arr.splice(from, 1)[0];
   arr.splice(to, 0, t);
   appCfgs = arr;
-  saveApps(true); // 顺序整体持久化（工具栏/启动激活跟随新顺序）
   renderAppList();
+  renderBar(); // 工具栏顺序跟随（不动 iframe）
+  persistApps();
 }
 
 function renderAppList() {
@@ -685,52 +843,124 @@ function renderAppList() {
   appCfgs.forEach((p, i) => {
     const row = document.createElement('div');
     row.className = 'app-row';
-    const name = document.createElement('span');
-    name.className = 'a-name';
-    name.textContent = p.name || p.id;
-    name.title = p.id;
-    const url = document.createElement('span');
-    url.className = 'a-url';
-    url.textContent = p.url;
-    const hot = document.createElement('span');
-    hot.className = 'a-hot';
-    hot.textContent = p.hotkey || '';
-    const upBtn = document.createElement('button');
-    upBtn.className = 'btn mv';
-    upBtn.textContent = '↑';
-    upBtn.title = '上移';
-    upBtn.disabled = i === 0;
-    upBtn.onclick = () => moveApp(i, -1);
-    const downBtn = document.createElement('button');
-    downBtn.className = 'btn mv';
-    downBtn.textContent = '↓';
-    downBtn.title = '下移';
-    downBtn.disabled = i === appCfgs.length - 1;
-    downBtn.onclick = () => moveApp(i, 1);
-    const delBtn = document.createElement('button');
-    delBtn.className = 'btn';
-    delBtn.textContent = '删除';
-    delBtn.onclick = () => {
-      if (!confirm('删除 web 应用「' + (p.name || p.id) + '」？')) return;
-      const wasActive = activeWebapp === p.id;
-      appCfgs = appCfgs.filter((x) => x.id !== p.id);
-      saveApps(true);
-      if (wasActive) activateWebapp(null); // 删的是当前激活应用 → 回主面板
-      renderHkList();
-    };
-    row.append(name, url, hot, upBtn, downBtn, delBtn);
+    const drag = document.createElement('span');
+    drag.className = 'drag';
+    drag.textContent = '⠿';
+    drag.title = '按住整行拖动排序';
+    row.appendChild(drag);
+    initRowDrag(row, i); // Pointer Events 拖动（不依赖 HTML5 DnD）
+    row.appendChild(orderEl(i));
+    row.appendChild(nameEl(p));
+    row.appendChild(urlEl(p));
+    row.appendChild(hotEl(p));
+    row.appendChild(delBtn(p));
     list.appendChild(row);
   });
 }
 
-// 保存应用列表（即时生效）；rebuild 决定是否重建界面
-function saveApps(rebuild) {
-  atrayApi.setConfig({webapps: appCfgs}).then(() => {
-    if (rebuild) {
-      buildWebappUI();
-      if (!appCfgs.length) activateWebapp(null);
+/* ---- 拖动排序：Pointer Events，实时换行 ----
+   拖动期间 DOM 与 appCfgs 同步位移；松开后重排序号列并持久化。 */
+let dragState = null;
+function initRowDrag(row, i) {
+  row.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest('input,.btn')) return;
+    dragState = { row, startY: e.clientY, moved: false, lastHover: -1 };
+  });
+}
+window.addEventListener('pointermove', (e) => {
+  if (!dragState) return;
+  if (!dragState.moved) {
+    if (Math.abs(e.clientY - dragState.startY) < 6) return;
+    dragState.moved = true;
+    dragState.row.classList.add('dragging');
+    e.preventDefault();
+  }
+  const rows = Array.from(document.querySelectorAll('#app-list .app-row'));
+  let hover = -1;
+  for (let k = 0; k < rows.length; k++) {
+    const r = rows[k].getBoundingClientRect();
+    if (e.clientY >= r.top && e.clientY <= r.bottom) { hover = k; break; }
+  }
+  if (hover < 0 || hover === dragState.lastHover) return;
+  const cur = rows.indexOf(dragState.row);
+  if (cur < 0 || cur === hover) return;
+  dragState.lastHover = hover;
+  const target = rows[hover];
+  if (cur < hover) target.after(dragState.row); else target.before(dragState.row);
+  const arr = appCfgs.slice();
+  const t = arr.splice(cur, 1)[0];
+  arr.splice(hover, 0, t);
+  appCfgs = arr;
+  e.preventDefault();
+});
+window.addEventListener('pointerup', () => {
+  if (!dragState) return;
+  const moved = dragState.moved;
+  if (dragState.row) dragState.row.classList.remove('dragging');
+  dragState = null;
+  if (moved) {
+    renderAppList();
+    renderBar();
+    persistApps();
+  }
+});
+
+// 行内元素构造器
+function orderEl(i) {
+  const order = document.createElement('input');
+  order.className = 'order';
+  order.type = 'text';
+  order.inputMode = 'numeric';
+  order.value = i + 1;
+  order.title = '输入序号回车即移动到该位置';
+  order.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') order.blur();
+    if (e.key === 'Escape') { order.value = i + 1; order.blur(); }
+  });
+  order.addEventListener('blur', () => {
+    const n = parseInt(order.value, 10);
+    if (!isNaN(n) && n >= 1 && n <= appCfgs.length) {
+      if (n - 1 !== i) reorderWebapp(i, n - 1);
+    } else {
+      order.value = i + 1;
     }
   });
+  return order;
+}
+function nameEl(p) {
+  const name = document.createElement('span');
+  name.className = 'a-name';
+  name.textContent = p.name || p.id;
+  name.title = p.id;
+  return name;
+}
+function urlEl(p) {
+  const url = document.createElement('span');
+  url.className = 'a-url';
+  url.textContent = p.url;
+  return url;
+}
+function hotEl(p) {
+  const hot = document.createElement('span');
+  hot.className = 'a-hot';
+  hot.textContent = p.hotkey || '';
+  return hot;
+}
+function delBtn(p) {
+  const btn = document.createElement('button');
+  btn.className = 'btn';
+  btn.textContent = '删除';
+  btn.onclick = () => {
+    if (!confirm('删除 web 应用「' + (p.name || p.id) + '」？')) return;
+    appCfgs = appCfgs.filter((x) => x.id !== p.id);
+    removeWebapp(p.id); // 立即移除按钮/iframe/激活态（面板不用关也能看到）
+    renderAppList();
+    renderHkList();
+    persistApps();
+    showToast('已删除「' + (p.name || p.id) + '」');
+  };
+  return btn;
 }
 
 document.getElementById('p-add-btn').onclick = () => {
@@ -745,11 +975,15 @@ document.getElementById('p-add-btn').onclick = () => {
   let id = base || ('p' + Date.now());
   let i = 2;
   while (appCfgs.some((p) => p.id === id)) id = base + '-' + (i++);
-  appCfgs.push({id, name: name || url, url});
+  const p = {id, name: name || url, url};
+  appCfgs.push(p);
   document.getElementById('p-url').value = '';
   document.getElementById('p-name').value = '';
-  saveApps(true);
+  ensureWebapp(p); // 立即出现在状态栏（图标探测随后填充）
+  renderAppList();
   renderHkList();
+  persistApps();
+  probeIcon(p);
   showToast('已添加「' + (name || url) + '」');
 };
 
@@ -794,6 +1028,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   buildWebappUI();
   if (appCfgs.length) activateWebapp(appCfgs[0].id);
   else activateWebapp(null);
+  // 已有应用无图标 → 尝试探测 favicon（命中后自动更新按钮并持久化）
+  for (const p of appCfgs) probeIcon(p);
 });
 </script>
 </body>
